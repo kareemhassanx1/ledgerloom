@@ -10,6 +10,7 @@ from ledgerloom.domain.identifiers import (
     SourceId,
 )
 from ledgerloom.domain.money import Currency, Money
+from ledgerloom.domain.time import TimeRange, UtcTimestamp
 
 __all__ = [
     "AccountId",
@@ -23,4 +24,6 @@ __all__ = [
     "Money",
     "OpaqueId",
     "SourceId",
+    "TimeRange",
+    "UtcTimestamp",
 ]
