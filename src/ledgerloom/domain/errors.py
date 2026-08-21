@@ -32,3 +32,12 @@ class DomainValidationError(LedgerLoomError, ValueError):
         self.value = value
         super().__init__(f"{field}: {message} [{code}]")
 
+
+class CurrencyMismatchError(LedgerLoomError, ArithmeticError):
+    """Raised when an operation combines values in different currencies."""
+
+    def __init__(self, left: str, right: str) -> None:
+        self.left = left
+        self.right = right
+        super().__init__(f"currency mismatch: {left} and {right}")
+
