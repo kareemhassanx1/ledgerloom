@@ -1,0 +1,39 @@
+# Roadmap
+
+The roadmap follows dependency order so that each milestone leaves a useful,
+tested library surface.
+
+## Domain foundation
+
+- Validated identifiers and account references.
+- Exact monetary values and arithmetic.
+- Timezone-aware occurrence timestamps.
+- Immutable source records, entries, batches, and validation results.
+
+## Verifiable history
+
+- Canonical JSON encoding and stable fingerprints.
+- Append-only event journals with hash-chain integrity.
+- Replayable projections, checkpoints, and snapshots.
+- Recovery diagnostics for truncated or corrupted journals.
+
+## Reconciliation
+
+- Composable match rules and structured evidence.
+- Candidate indexes for account, amount, reference, and time windows.
+- Deterministic scoring, ambiguity detection, and conflict policies.
+- Explainable batch results and summary reports.
+
+## Boundaries
+
+- Streaming CSV and JSON Lines importers.
+- Schema mapping and row-level validation diagnostics.
+- SQLite storage with transactional batch writes.
+- Command-line workflows for import, reconcile, inspect, and export.
+
+## Hardening
+
+- End-to-end fixtures covering partial failure and restart behavior.
+- Property-style invariant tests and performance benchmarks.
+- API reference, tutorials, and operational guidance.
+
