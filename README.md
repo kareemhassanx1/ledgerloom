@@ -12,7 +12,8 @@ as immutable domain data.
 
 ## Planned capabilities
 
-- Strict value objects for identifiers, money, timestamps, and source records.
+- Strict value objects for identifiers, money, timestamps, source records, and ledger entries.
+- Ordered ledger batches that preserve accepted entries and structured rejection diagnostics.
 - Canonical serialization and content fingerprints.
 - Append-only journals with integrity verification and snapshots.
 - Configurable exact, tolerance, date-window, and composite match rules.
@@ -50,11 +51,11 @@ and the test tree mirrors that structure.
 
 ## Status
 
-LedgerLoom is under active development. The initial releases focus on a stable
-domain model and deterministic in-process engine before adding persistence and
-the CLI.
+LedgerLoom is under active development. The domain foundation currently provides
+immutable financial values, provenance-carrying source records and entries, and
+partial-success batches with stable diagnostics. The next releases build the
+deterministic in-process engine before adding persistence and the CLI.
 
 ## License
 
 LedgerLoom is available under the MIT License.
-

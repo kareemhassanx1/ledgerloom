@@ -11,6 +11,17 @@ operations. Adapter packages translate external data and persist results.
 : Identifiers, monetary values, timestamps, source records, ledger entries, and
   reconciliation outcomes. Domain objects reject invalid state when created.
 
+Source records retain the upstream source and source-scoped record identifier.
+Normalized ledger entries copy that provenance so batches can reject duplicate
+input without inspecting mutable adapter state. A ledger batch contains one
+ordered `ValidationResult` per submitted item: successful items carry an entry
+and optional warnings, while rejected items carry one or more error diagnostics.
+Flattened batch diagnostics include stable one-based input positions.
+
+Boundary diagnostics contain a stable code, field path, message, and severity.
+They never retain the rejected value held by a `DomainValidationError`, which
+makes them safe to persist or log without accidentally copying source data.
+
 `ledgerloom.journal`
 : Append-only event storage, canonical encoding, integrity chains, replay, and
   snapshots. The initial implementation is in memory; durable implementations
@@ -44,4 +55,3 @@ which keeps business behavior independently testable.
 Ordering is explicit at every boundary. Canonical encoders sort mapping keys,
 timestamps are normalized to UTC, and ranking uses stable tie breakers. Injected
 clocks and identifier factories keep tests independent of wall-clock time.
-

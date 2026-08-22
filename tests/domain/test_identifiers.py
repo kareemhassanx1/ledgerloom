@@ -9,6 +9,7 @@ from ledgerloom.domain.identifiers import (
     CorrelationId,
     EntryId,
     SourceId,
+    SourceRecordId,
 )
 
 
@@ -17,6 +18,7 @@ from ledgerloom.domain.identifiers import (
     [
         (SourceId, "bank"),
         (SourceId, "bank.primary"),
+        (SourceRecordId, "statement:2026-08:0042"),
         (AccountId, "assets:cash"),
         (AccountId, "checking_US-01"),
         (EntryId, "01K34ACR6E7W8H9J0K1M2N3P4Q"),
@@ -138,4 +140,3 @@ def test_validation_error_exposes_stable_structured_fields():
     assert error.message == "is not valid"
     assert error.value == "sensitive"
     assert str(error) == "sample: is not valid [sample.invalid]"
-

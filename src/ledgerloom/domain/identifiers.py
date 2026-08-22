@@ -76,6 +76,12 @@ class SourceId(OpaqueId):
     max_length = 64
 
 
+class SourceRecordId(OpaqueId):
+    """Identify one record within an upstream source."""
+
+    kind = "source_record_id"
+
+
 class AccountId(OpaqueId):
     """Identify an account within LedgerLoom's normalized namespace."""
 
@@ -98,4 +104,3 @@ class CorrelationId(OpaqueId):
     """Link operations that belong to the same external workflow."""
 
     kind = "correlation_id"
-

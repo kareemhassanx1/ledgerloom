@@ -5,10 +5,10 @@ tested library surface.
 
 ## Domain foundation
 
-- Validated identifiers and account references.
-- Exact monetary values and arithmetic.
-- Timezone-aware occurrence timestamps.
-- Immutable source records, entries, batches, and validation results.
+- [x] Validated identifiers and account references.
+- [x] Exact monetary values and arithmetic.
+- [x] Timezone-aware occurrence timestamps.
+- [x] Immutable source records, entries, batches, and validation results.
 
 ## Verifiable history
 
@@ -36,4 +36,3 @@ tested library surface.
 - End-to-end fixtures covering partial failure and restart behavior.
 - Property-style invariant tests and performance benchmarks.
 - API reference, tutorials, and operational guidance.
-
