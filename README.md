@@ -14,7 +14,7 @@ as immutable domain data.
 
 - Strict value objects for identifiers, money, timestamps, source records, and ledger entries.
 - Ordered ledger batches that preserve accepted entries and structured rejection diagnostics.
-- Canonical serialization and content fingerprints.
+- Canonical, versioned serialization and SHA-256 content fingerprints.
 - Append-only journals with integrity verification and snapshots.
 - Configurable exact, tolerance, date-window, and composite match rules.
 - Explainable reconciliation decisions and conflict resolution.
@@ -54,7 +54,8 @@ and the test tree mirrors that structure.
 LedgerLoom is under active development. The domain foundation currently provides
 immutable financial values, provenance-carrying source records and entries, and
 partial-success batches with stable diagnostics. The next releases build the
-deterministic in-process engine before adding persistence and the CLI.
+deterministic in-process engine on versioned, canonical domain documents before
+adding persistence and the CLI.
 
 ## License
 

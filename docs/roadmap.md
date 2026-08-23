@@ -12,7 +12,7 @@ tested library surface.
 
 ## Verifiable history
 
-- Canonical JSON encoding and stable fingerprints.
+- [x] Canonical JSON encoding and stable fingerprints.
 - Append-only event journals with hash-chain integrity.
 - Replayable projections, checkpoints, and snapshots.
 - Recovery diagnostics for truncated or corrupted journals.

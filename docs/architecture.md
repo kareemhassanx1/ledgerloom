@@ -55,3 +55,21 @@ which keeps business behavior independently testable.
 Ordering is explicit at every boundary. Canonical encoders sort mapping keys,
 timestamps are normalized to UTC, and ranking uses stable tie breakers. Injected
 clocks and identifier factories keep tests independent of wall-clock time.
+
+## Serialized contracts
+
+Persistence boundaries use canonical UTF-8 JSON: object keys are sorted,
+insignificant whitespace is removed, integers stay within the interoperable
+JSON range, and binary floating-point values are rejected. Exact amounts and
+timestamps are represented by canonical text owned by their domain values.
+
+Every document has a dotted schema name, a comparable `major.minor` version,
+and one payload. A SHA-256 fingerprint covers the complete canonical envelope,
+including its schema metadata. Registries select the latest registered codec
+for a Python type by default while retaining explicit access to older versions.
+
+The first contract set covers source records, ledger entries, and ordered
+ledger batches. Batch payloads preserve accepted entries, rejected positions,
+warnings, and errors so a serialize/deserialize round trip cannot hide partial
+failure. Decoding rebuilds the domain objects and therefore rechecks all domain
+invariants rather than trusting the serialized data.
