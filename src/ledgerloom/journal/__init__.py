@@ -6,6 +6,11 @@ from ledgerloom.journal.entries import (
     verify_journal_entries,
 )
 from ledgerloom.journal.errors import JournalConflictError, JournalError, JournalIntegrityError
+from ledgerloom.journal.integrity import (
+    JournalIntegrityIssue,
+    JournalIntegrityReport,
+    inspect_journal_entries,
+)
 from ledgerloom.journal.memory import (
     DEFAULT_MAX_READ_LIMIT,
     MAX_CONFIGURED_READ_LIMIT,
@@ -21,5 +26,8 @@ __all__ = [
     "JournalEntry",
     "JournalError",
     "JournalIntegrityError",
+    "JournalIntegrityIssue",
+    "JournalIntegrityReport",
+    "inspect_journal_entries",
     "verify_journal_entries",
 ]

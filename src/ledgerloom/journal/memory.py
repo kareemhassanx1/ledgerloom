@@ -6,6 +6,7 @@ from threading import RLock
 
 from ledgerloom.journal.entries import MAX_JOURNAL_SEQUENCE, JournalEntry, verify_journal_entries
 from ledgerloom.journal.errors import JournalConflictError, JournalError
+from ledgerloom.journal.integrity import JournalIntegrityReport, inspect_journal_entries
 from ledgerloom.serialization.fingerprints import ContentFingerprint
 from ledgerloom.serialization.schema import SchemaDocument
 
@@ -157,6 +158,21 @@ class InMemoryJournal:
 
         with self._lock:
             self._verify_locked()
+
+    def integrity_report(
+        self,
+        *,
+        expected_count: int | None = None,
+        expected_head: ContentFingerprint | None = None,
+    ) -> JournalIntegrityReport:
+        """Inspect storage without hiding the diagnostic behind a read failure."""
+
+        with self._lock:
+            return inspect_journal_entries(
+                self._entries,
+                expected_count=expected_count,
+                expected_head=expected_head,
+            )
 
     def _verify_locked(self) -> None:
         verify_journal_entries(self._entries)
