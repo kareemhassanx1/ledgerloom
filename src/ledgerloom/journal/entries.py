@@ -177,19 +177,6 @@ class JournalEntry:
 def verify_journal_entries(entries: Iterable[JournalEntry]) -> None:
     """Require an iterable to contain one complete, contiguous hash chain."""
 
-    if isinstance(entries, (str, bytes, bytearray)) or not isinstance(entries, Iterable):
-        raise JournalError(
-            code="journal.entries_type",
-            path="$",
-            message="entries must be an iterable of JournalEntry values",
-        )
-    previous: ContentFingerprint | None = None
-    for index, entry in enumerate(entries):
-        if not isinstance(entry, JournalEntry):
-            raise JournalIntegrityError(
-                code="journal.entry_type",
-                path=f"$[{index}]",
-                message="journal chains may contain only JournalEntry values",
-            )
-        entry.verify(expected_sequence=index + 1, expected_previous=previous)
-        previous = entry.fingerprint
+    from ledgerloom.journal.integrity import inspect_journal_entries
+
+    inspect_journal_entries(entries).require_valid()

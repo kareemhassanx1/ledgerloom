@@ -66,6 +66,10 @@ class ReplayCursor:
                 path="$.entry",
                 message="entry must be a JournalEntry",
             )
+        entry.verify(
+            expected_sequence=entry.sequence,
+            expected_previous=entry.previous_fingerprint,
+        )
         return cls(entry.sequence, entry.fingerprint)
 
 
@@ -259,4 +263,3 @@ class JournalReplayer:
             reducer=reducer,
             cursor=cursor,
         )
-

@@ -325,6 +325,16 @@ def test_cursor_from_entry_requires_journal_entry():
     assert captured.value.code == "journal.cursor_entry_type"
 
 
+def test_cursor_from_entry_rejects_tampered_entry():
+    entry = journal_with_records(record("txn-1")).read()[0]
+    object.__setattr__(entry, "fingerprint", ContentFingerprint.from_bytes(b"tampered"))
+
+    with pytest.raises(JournalIntegrityError) as captured:
+        ReplayCursor.from_entry(entry)
+
+    assert captured.value.code == "journal.fingerprint_mismatch"
+
+
 @pytest.mark.parametrize(
     "registry,reducer,cursor,code",
     [
@@ -360,4 +370,3 @@ def test_replay_result_rejects_count_that_disagrees_with_cursor_advance():
         ReplayResult(None, ReplayCursor.genesis(), cursor, 0)
 
     assert captured.value.code == "journal.replay_count_mismatch"
-

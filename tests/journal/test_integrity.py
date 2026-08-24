@@ -188,9 +188,9 @@ def test_memory_report_supports_external_count_and_head_expectations():
     "arguments,code",
     [
         ({"starting_sequence": True}, "journal.starting_sequence_type"),
-        ({"starting_sequence": 0}, "journal.starting_sequence_type_range"),
+        ({"starting_sequence": 0}, "journal.starting_sequence_range"),
         ({"expected_count": True}, "journal.expected_count_type"),
-        ({"expected_count": -1}, "journal.expected_count_type_range"),
+        ({"expected_count": -1}, "journal.expected_count_range"),
         ({"expected_head": "digest"}, "journal.expected_head_type"),
     ],
 )
@@ -224,4 +224,3 @@ def test_inspection_rejects_non_entry_without_raising_constructor_error():
     assert report.issues[0].code == "journal.entry_type"
     assert report.issues[0].path == "$[0]"
     assert report.valid_entries == 0
-

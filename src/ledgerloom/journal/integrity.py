@@ -51,16 +51,17 @@ class JournalIntegrityReport:
 def _integer(
     value: object,
     *,
-    code: str,
+    type_code: str,
+    range_code: str,
     path: str,
     minimum: int,
     maximum: int,
 ) -> int:
     if isinstance(value, bool) or not isinstance(value, int):
-        raise JournalError(code=code, path=path, message="must be an integer")
+        raise JournalError(code=type_code, path=path, message="must be an integer")
     if not minimum <= value <= maximum:
         raise JournalError(
-            code=f"{code}_range",
+            code=range_code,
             path=path,
             message=f"must be between {minimum} and {maximum}",
         )
@@ -92,7 +93,8 @@ def inspect_journal_entries(
         )
     resolved_start = _integer(
         starting_sequence,
-        code="journal.starting_sequence_type",
+        type_code="journal.starting_sequence_type",
+        range_code="journal.starting_sequence_range",
         path="$.starting_sequence",
         minimum=1,
         maximum=MAX_JOURNAL_SEQUENCE,
@@ -122,7 +124,8 @@ def inspect_journal_entries(
     else:
         resolved_expected_count = _integer(
             expected_count,
-            code="journal.expected_count_type",
+            type_code="journal.expected_count_type",
+            range_code="journal.expected_count_range",
             path="$.expected_count",
             minimum=0,
             maximum=MAX_JOURNAL_SEQUENCE,
@@ -220,4 +223,3 @@ def inspect_journal_entries(
         head_fingerprint=previous,
         issues=tuple(issues),
     )
-
