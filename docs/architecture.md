@@ -27,6 +27,15 @@ makes them safe to persist or log without accidentally copying source data.
   snapshots. The initial implementation is in memory; durable implementations
   preserve the same behavior.
 
+Journal entries assign contiguous one-based sequences and retain immutable
+schema documents. Each entry fingerprint covers its sequence, event schema and
+content fingerprint, and the preceding entry fingerprint. The in-memory adapter
+verifies the complete chain before returning events or accepting an append. An
+optimistic expected-sequence guard coordinates competing writers, while a
+configurable hard limit caps cursor-based reads. A durable adapter must preserve
+those observable semantics and surface integrity failures instead of skipping
+damaged entries.
+
 `ledgerloom.rules`
 : Match predicates, weighted evidence, composition, and deterministic ranking.
   Rules return explanations rather than a bare boolean.

@@ -51,11 +51,11 @@ and the test tree mirrors that structure.
 
 ## Status
 
-LedgerLoom is under active development. The domain foundation currently provides
-immutable financial values, provenance-carrying source records and entries, and
-partial-success batches with stable diagnostics. The next releases build the
-deterministic in-process engine on versioned, canonical domain documents before
-adding persistence and the CLI.
+LedgerLoom is under active development. The current foundation provides immutable
+financial values, provenance-carrying records and batches, versioned canonical
+documents, and an in-memory append-only journal with sequence guards, bounded
+reads, and hash-chain verification. The next releases add replayable projections
+before persistence and the CLI.
 
 ## License
 

@@ -13,7 +13,7 @@ tested library surface.
 ## Verifiable history
 
 - [x] Canonical JSON encoding and stable fingerprints.
-- Append-only event journals with hash-chain integrity.
+- [x] Append-only event journals with hash-chain integrity and bounded reads.
 - Replayable projections, checkpoints, and snapshots.
 - Recovery diagnostics for truncated or corrupted journals.
 
