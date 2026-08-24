@@ -21,3 +21,7 @@ class JournalConflictError(JournalError):
 
 class JournalIntegrityError(JournalError):
     """Raised when stored entries no longer form a valid hash chain."""
+
+
+class JournalReplayError(JournalError):
+    """Raised when a verified entry cannot be decoded for replay."""
