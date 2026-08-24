@@ -14,8 +14,9 @@ tested library surface.
 
 - [x] Canonical JSON encoding and stable fingerprints.
 - [x] Append-only event journals with hash-chain integrity and bounded reads.
+- [x] Fingerprint-anchored replay and structured corruption diagnostics.
 - Replayable projections, checkpoints, and snapshots.
-- Recovery diagnostics for truncated or corrupted journals.
+- [x] Recovery diagnostics for truncated or corrupted journals.
 
 ## Reconciliation
 

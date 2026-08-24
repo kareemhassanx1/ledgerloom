@@ -15,7 +15,7 @@ as immutable domain data.
 - Strict value objects for identifiers, money, timestamps, source records, and ledger entries.
 - Ordered ledger batches that preserve accepted entries and structured rejection diagnostics.
 - Canonical, versioned serialization and SHA-256 content fingerprints.
-- Append-only journals with integrity verification and snapshots.
+- Append-only journals with integrity reports, resumable replay, and snapshots.
 - Configurable exact, tolerance, date-window, and composite match rules.
 - Explainable reconciliation decisions and conflict resolution.
 - CSV and JSON Lines ingestion with structured validation errors.
@@ -54,8 +54,8 @@ and the test tree mirrors that structure.
 LedgerLoom is under active development. The current foundation provides immutable
 financial values, provenance-carrying records and batches, versioned canonical
 documents, and an in-memory append-only journal with sequence guards, bounded
-reads, and hash-chain verification. The next releases add replayable projections
-before persistence and the CLI.
+reads, truncation diagnostics, and fingerprint-anchored replay. The next releases
+add durable projections and snapshots before persistence and the CLI.
 
 ## License
 

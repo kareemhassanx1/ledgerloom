@@ -36,6 +36,14 @@ configurable hard limit caps cursor-based reads. A durable adapter must preserve
 those observable semantics and surface integrity failures instead of skipping
 damaged entries.
 
+Integrity inspection reports the verified prefix and first broken sequence
+without requiring a successful read. Independently stored count and head values
+make a truncated but internally consistent prefix detectable. Replay accepts
+genesis or fingerprint-anchored segments, verifies and decodes the complete
+segment before invoking a reducer, and returns a cursor for the next segment.
+This keeps corruption and unknown schema versions from partially changing a
+projection.
+
 `ledgerloom.rules`
 : Match predicates, weighted evidence, composition, and deterministic ranking.
   Rules return explanations rather than a bare boolean.
