@@ -64,3 +64,46 @@ reducer runs, preventing a projection from continuing on another history.
 fingerprint, chain fingerprint, and sequence. Reducers should depend on these
 public values and remain free of external side effects where possible.
 
+## Checkpointing projections
+
+`ProjectionRunner` adds named, resumable projections on top of verified replay.
+A `ProjectionCheckpoint` contains the projected state and the `ReplayCursor` that
+identifies the exact journal prefix used to produce it:
+
+```python
+from ledgerloom.journal import Projection, ProjectionRunner
+
+projection = Projection(
+    "ledgerloom.record_ids",
+    (),
+    lambda state, event: (*state, str(event.value.record_id)),
+)
+runner = ProjectionRunner(registry)
+checkpoint = runner.project(first_page, projection=projection)
+snapshot = runner.snapshot(checkpoint)
+```
+
+Snapshot state must have a codec in the same schema registry. The snapshot is a
+canonical `ledgerloom.projection_snapshot@1.0` document containing the projection
+name, replay cursor, and complete versioned state document. Persist both
+`snapshot.content` and `snapshot.fingerprint`; the independent fingerprint lets
+recovery detect replacement or truncation of the outer snapshot, while the
+embedded state fingerprint protects the state document itself.
+
+Recovery restores the checkpoint and verifies the next segment against its
+fingerprint anchor before invoking the reducer:
+
+```python
+recovered = runner.recover(
+    next_page,
+    projection=projection,
+    snapshot=stored_snapshot_bytes,
+    expected_fingerprint=stored_snapshot_fingerprint,
+)
+```
+
+The next page must start at `checkpoint.cursor.sequence + 1`. A page copied from
+another history, a damaged snapshot, an unknown state schema, or a snapshot for
+another projection fails before any new event is applied. Reducers and state
+codecs determine semantic determinism, so they should avoid clocks, random values,
+unordered external input, and side effects.

@@ -10,6 +10,8 @@ from ledgerloom.journal.errors import (
     JournalError,
     JournalIntegrityError,
     JournalReplayError,
+    ProjectionError,
+    ProjectionSnapshotError,
 )
 from ledgerloom.journal.integrity import (
     JournalIntegrityIssue,
@@ -20,6 +22,13 @@ from ledgerloom.journal.memory import (
     DEFAULT_MAX_READ_LIMIT,
     MAX_CONFIGURED_READ_LIMIT,
     InMemoryJournal,
+)
+from ledgerloom.journal.projections import (
+    PROJECTION_SNAPSHOT_SCHEMA,
+    Projection,
+    ProjectionCheckpoint,
+    ProjectionRunner,
+    ProjectionSnapshot,
 )
 from ledgerloom.journal.replay import (
     DecodedJournalEvent,
@@ -33,6 +42,7 @@ __all__ = [
     "DEFAULT_MAX_READ_LIMIT",
     "MAX_CONFIGURED_READ_LIMIT",
     "MAX_JOURNAL_SEQUENCE",
+    "PROJECTION_SNAPSHOT_SCHEMA",
     "DecodedJournalEvent",
     "InMemoryJournal",
     "JournalConflictError",
@@ -43,6 +53,12 @@ __all__ = [
     "JournalIntegrityReport",
     "JournalReplayError",
     "JournalReplayer",
+    "Projection",
+    "ProjectionCheckpoint",
+    "ProjectionError",
+    "ProjectionRunner",
+    "ProjectionSnapshot",
+    "ProjectionSnapshotError",
     "ReplayCursor",
     "ReplayResult",
     "inspect_journal_entries",

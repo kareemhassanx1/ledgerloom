@@ -44,6 +44,15 @@ segment before invoking a reducer, and returns a cursor for the next segment.
 This keeps corruption and unknown schema versions from partially changing a
 projection.
 
+Named projections combine a genesis state with a reducer and produce immutable
+checkpoints whose replay cursor binds the state to an exact journal history.
+Snapshots encode checkpoint state through the schema registry, embed the complete
+canonical state document and its fingerprint, and wrap it in the versioned
+`ledgerloom.projection_snapshot@1.0` contract. Recovery validates the snapshot,
+projection identity, state schema, and next journal link before applying new
+events. Equal checkpoint state and schema versions therefore produce identical
+snapshot bytes and fingerprints.
+
 `ledgerloom.rules`
 : Match predicates, weighted evidence, composition, and deterministic ranking.
   Rules return explanations rather than a bare boolean.

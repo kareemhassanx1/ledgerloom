@@ -25,3 +25,11 @@ class JournalIntegrityError(JournalError):
 
 class JournalReplayError(JournalError):
     """Raised when a verified entry cannot be decoded for replay."""
+
+
+class ProjectionError(JournalError):
+    """Raised when a projection definition or checkpoint is invalid."""
+
+
+class ProjectionSnapshotError(ProjectionError):
+    """Raised when a projection snapshot cannot be verified or restored."""
