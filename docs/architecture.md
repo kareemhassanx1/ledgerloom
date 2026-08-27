@@ -54,8 +54,16 @@ events. Equal checkpoint state and schema versions therefore produce identical
 snapshot bytes and fingerprints.
 
 `ledgerloom.rules`
-: Match predicates, weighted evidence, composition, and deterministic ranking.
+: Match contracts, structured evidence, composition, and deterministic ranking.
   Rules return explanations rather than a bare boolean.
+
+Rule evidence records a three-valued verdict, stable rule and reason codes,
+canonical scalar facts, and ordered child explanations. Built-in scope rules
+prevent self-matches and compare account or source identity. Composite rules
+apply explicit `all`, `any`, and `not` semantics without short-circuiting, so an
+audit receives evidence from every configured child in declaration order.
+Custom implementations pass through a guarded protocol boundary that verifies
+operand types, result types, and evidence ownership.
 
 `ledgerloom.reconciliation`
 : Candidate selection, decision policies, conflict handling, and result reports.
@@ -81,6 +89,9 @@ which keeps business behavior independently testable.
 Ordering is explicit at every boundary. Canonical encoders sort mapping keys,
 timestamps are normalized to UTC, and ranking uses stable tie breakers. Injected
 clocks and identifier factories keep tests independent of wall-clock time.
+Matching evidence sorts facts by name and preserves policy child order, which
+makes traversal and failure extraction repeatable without relying on mapping or
+set iteration order.
 
 ## Serialized contracts
 

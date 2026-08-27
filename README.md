@@ -55,8 +55,10 @@ LedgerLoom is under active development. The current foundation provides immutabl
 financial values, provenance-carrying records and batches, versioned canonical
 documents, and an in-memory append-only journal with sequence guards, bounded
 reads, truncation diagnostics, fingerprint-anchored replay, and named projections
-with deterministic resumable snapshots. The next releases add reconciliation
-rules and durable persistence before the CLI.
+with deterministic resumable snapshots. It also provides structured three-valued
+matching evidence, guarded rule contracts, entry-scope safeguards, and complete
+`all`/`any`/`not` policy composition. The next releases add candidate indexes,
+field comparison and ranking before durable persistence and the CLI.
 
 ## License
 
