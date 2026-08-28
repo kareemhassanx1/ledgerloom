@@ -21,7 +21,7 @@ tested library surface.
 ## Reconciliation
 
 - [x] Composable match rules and structured evidence.
-- Candidate indexes for account, amount, reference, and time windows.
+- [x] Candidate indexes for account, amount, reference, and time windows.
 - Deterministic scoring, ambiguity detection, and conflict policies.
 - Explainable batch results and summary reports.
 

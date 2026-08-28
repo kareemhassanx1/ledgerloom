@@ -68,6 +68,14 @@ operand types, result types, and evidence ownership.
 `ledgerloom.reconciliation`
 : Candidate selection, decision policies, conflict handling, and result reports.
 
+Candidate indexes snapshot an entry set and build account, exact and tolerant
+amount, present-reference, and occurrence-time lookups. Lookups and intersections
+always return entries ordered by occurrence instant and then entry identifier,
+independently of ingestion order. Centered time windows include both boundaries
+and clamp at the supported datetime limits. `candidates_for()` intersects
+same-account, same-currency amount-tolerance, and time-window indexes, optionally
+requires an exact reference, and excludes the anchor entry.
+
 `ledgerloom.ingest`
 : Parsers and validation pipelines for external record formats. Import failures
   are data, not control-flow exceptions, so one bad row does not hide later rows.
@@ -91,7 +99,9 @@ timestamps are normalized to UTC, and ranking uses stable tie breakers. Injected
 clocks and identifier factories keep tests independent of wall-clock time.
 Matching evidence sorts facts by name and preserves policy child order, which
 makes traversal and failure extraction repeatable without relying on mapping or
-set iteration order.
+set iteration order. Candidate index buckets use the same canonical
+occurrence-time and entry-identifier ordering, including when multiple entries
+share an instant.
 
 ## Serialized contracts
 

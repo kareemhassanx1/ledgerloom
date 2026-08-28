@@ -1,5 +1,6 @@
 # Matching rules
 
+
 LedgerLoom match rules compare two normalized `LedgerEntry` values and return
 `RuleEvidence`. A rule never returns a bare boolean. This makes a policy result
 usable both by reconciliation code and by audit or reporting tools without
@@ -26,15 +27,36 @@ match or a mismatch.
 
 ## Built-in safeguards
 
-The first built-in rules establish safe candidate scope:
+Built-in scope rules establish safe candidate scope:
 
 - `DifferentEntryRule` prevents an entry from matching itself.
 - `SameAccountRule` requires a common normalized account.
 - `DifferentSourceRule` limits matching to records from different upstream
   sources.
 
-Amount, reference, and time-window comparison rules build on the same contract
-in the next matching milestone.
+Field rules build on the same contract:
+
+- `AmountRule` requires a common currency and accepts an exact decimal
+  difference up to its configured non-negative tolerance. The tolerance
+  boundary is inclusive and defaults to zero.
+- `ReferenceRule` compares canonical reference text exactly. A missing reference
+  on either side is `indeterminate`, not a rejection.
+- `TimeWindowRule` accepts entries whose absolute occurrence-time difference is
+  no greater than its configured non-negative `timedelta`. Both boundaries are
+  inclusive.
+
+## Candidate indexes
+
+`CandidateIndex` snapshots entries into account, exact and tolerant amount
+(including currency), present-reference, and occurrence-time indexes. Every
+lookup returns entries ordered by `(occurred_at, entry_id)`, so input order and
+hash iteration cannot change later policy behavior.
+
+`within_time_window()` uses the same inclusive boundary as `TimeWindowRule`.
+`candidates_for()` intersects account, same-currency amount-tolerance, and
+time-window lookups, optionally requires an exact reference, and removes the
+anchor entry. Missing references are not placed in the reference index because
+they represent absent evidence rather than a shared value.
 
 ## Composition
 
@@ -59,11 +81,16 @@ time.
 ## Example
 
 ```python
+from datetime import timedelta
+
 from ledgerloom.rules import (
     AllOfRule,
+    AmountRule,
     DifferentEntryRule,
     DifferentSourceRule,
+    ReferenceRule,
     SameAccountRule,
+    TimeWindowRule,
     evaluate_rule,
 )
 
@@ -73,12 +100,15 @@ policy = AllOfRule(
         DifferentEntryRule(),
         DifferentSourceRule(),
         SameAccountRule(),
+        AmountRule(),
+        ReferenceRule(),
+        TimeWindowRule(timedelta(days=2)),
     ),
 )
 
 evidence = evaluate_rule(policy, bank_entry, processor_entry)
 if evidence.is_match:
-    print("candidate is eligible for field comparison")
+    print("candidate satisfies the configured policy")
 else:
     print([item.reason_code for item in evidence.failures])
 ```
