@@ -175,7 +175,7 @@ def replay_entries[T](
     events near the tail from causing a partially applied projection.
     """
 
-    if isinstance(entries, (str, bytes, bytearray)) or not isinstance(entries, Iterable):
+    if isinstance(entries, str | bytes | bytearray) or not isinstance(entries, Iterable):
         raise JournalError(
             code="journal.entries_type",
             path="$",

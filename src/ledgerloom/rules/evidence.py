@@ -64,7 +64,7 @@ class EvidenceFact:
                 path="$.evidence.facts.name",
                 message=f"fact name must contain at most {_MAX_FACT_NAME_LENGTH} characters",
             )
-        if not isinstance(self.value, (str, int, bool)) and self.value is not None:
+        if not isinstance(self.value, str | int | bool) and self.value is not None:
             raise RuleError(
                 code="rule.fact_value_type",
                 path=f"$.evidence.facts.{self.name}",

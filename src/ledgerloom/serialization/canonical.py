@@ -81,7 +81,7 @@ def _copy_json_value(value: object, *, path: str, active: set[int]) -> JsonValue
         finally:
             active.remove(identity)
 
-    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+    if isinstance(value, Sequence) and not isinstance(value, str | bytes | bytearray):
         identity = id(value)
         if identity in active:
             raise SerializationError(
