@@ -76,6 +76,19 @@ and clamp at the supported datetime limits. `candidates_for()` intersects
 same-account, same-currency amount-tolerance, and time-window indexes, optionally
 requires an exact reference, and excludes the anchor entry.
 
+Weighted scoring uses bounded positive integers and retains every rule's
+evidence in configuration order. Score cards bind evidence to both comparison
+entries, while required rules can disqualify a candidate independently of its
+points. Rankings use descending score followed by the canonical occurrence and
+entry-identifier order.
+
+Decision policies apply a minimum score and score margin. Exact ties remain
+ambiguous instead of being resolved by presentation tie breakers. Cross-anchor
+conflict policies either reject every reuse of one candidate or retain a
+uniquely higher scoring selection; equal leaders remain conflicts. Score-based
+conflict resolution rejects mixed maximum-score scales rather than comparing
+unlike values.
+
 `ledgerloom.ingest`
 : Parsers and validation pipelines for external record formats. Import failures
   are data, not control-flow exceptions, so one bad row does not hide later rows.
@@ -101,7 +114,8 @@ Matching evidence sorts facts by name and preserves policy child order, which
 makes traversal and failure extraction repeatable without relying on mapping or
 set iteration order. Candidate index buckets use the same canonical
 occurrence-time and entry-identifier ordering, including when multiple entries
-share an instant.
+share an instant. Score ranking adds descending integer score before that entry
+order, but decision policies explicitly detect tied evidence before selection.
 
 ## Serialized contracts
 

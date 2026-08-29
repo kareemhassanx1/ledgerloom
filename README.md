@@ -59,9 +59,11 @@ with deterministic resumable snapshots. It also provides structured three-valued
 matching evidence, guarded rule contracts, entry-scope safeguards, and complete
 `all`/`any`/`not` policy composition. Immutable candidate indexes narrow entries
 by account, exact or tolerant amount, reference, and inclusive time windows,
-while amount, reference, and time-window rules explain field-level matches. The
-next releases add scoring, ambiguity handling, and conflict policies before
-durable persistence and the CLI.
+while amount, reference, and time-window rules explain field-level matches.
+Integer-only weighted scoring retains every explanation, explicit margins keep
+tied or close candidates ambiguous, and conflict policies prevent two anchors
+from silently claiming the same entry. The next releases add explainable batch
+reports before import adapters, durable persistence, and the CLI.
 
 ## License
 

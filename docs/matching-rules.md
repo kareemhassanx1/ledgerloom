@@ -117,3 +117,6 @@ Third-party rules can satisfy the runtime-checkable `MatchRule` protocol by
 exposing a valid `rule_id` and an `evaluate(left, right)` method. Calling them
 through `evaluate_rule` verifies operand types, the evidence result type, and
 that the returned evidence belongs to the evaluated rule.
+
+See [Scoring and match decisions](scoring-decisions.md) for the integer weighting,
+ambiguity, and cross-anchor conflict semantics built on this evidence.
