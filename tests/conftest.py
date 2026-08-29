@@ -13,6 +13,8 @@ _DEFAULT_REFERENCE = object()
 
 @pytest.fixture
 def make_entry() -> Callable[..., LedgerEntry]:
+    """Build normalized entries for rule and reconciliation behavior tests."""
+
     def factory(
         entry_id: str = "entry-1",
         *,
@@ -21,7 +23,7 @@ def make_entry() -> Callable[..., LedgerEntry]:
         amount: str = "125.50",
         currency: str = "USD",
         occurred_at: str = "2026-08-27T10:15:00+03:00",
-        reference: str | None | object = _DEFAULT_REFERENCE,
+        reference: str | object | None = _DEFAULT_REFERENCE,
     ) -> LedgerEntry:
         return LedgerEntry(
             entry_id=EntryId(entry_id),
