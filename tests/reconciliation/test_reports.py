@@ -49,6 +49,23 @@ def test_decision_report_retains_ranked_scores_contenders_and_selection(mixed_ba
     assert conflict.status is DecisionStatus.CONFLICT
     assert conflict.selected_candidate_id is None
     assert conflict.contender_ids == (EntryId("candidate-shared"),)
+    assert conflict.competing_anchor_ids == (EntryId("anchor-conflict-b"),)
+    assert report.decision_for(
+        EntryId("anchor-conflict-b")
+    ).competing_anchor_ids == (EntryId("anchor-conflict-a"),)
+
+
+def test_report_links_a_preferred_conflict_winner_to_the_displaced_anchor(
+    preferred_conflict_batch,
+):
+    report = build_reconciliation_report(preferred_conflict_batch)
+    winner = report.decision_for(EntryId("anchor-strong"))
+    displaced = report.decision_for(EntryId("anchor-weak"))
+
+    assert winner.status is DecisionStatus.MATCHED
+    assert winner.competing_anchor_ids == (EntryId("anchor-weak"),)
+    assert displaced.status is DecisionStatus.CONFLICT
+    assert displaced.competing_anchor_ids == (EntryId("anchor-strong"),)
 
 
 def test_candidate_report_preserves_structured_rule_explanations(mixed_batch):
@@ -108,7 +125,7 @@ def test_text_render_is_deterministic_and_exposes_no_reference_values(mixed_batc
     )
     assert (
         "anchor-match: matched reason=decision.unique_leader "
-        "selected=candidate-match contenders=candidate-match"
+        "selected=candidate-match contenders=candidate-match competitors=none"
     ) in first
     assert "invoice-match" not in first
 
@@ -148,6 +165,17 @@ def test_decision_report_rejects_selection_outside_candidates(mixed_batch):
         replace(decision, selected_candidate_id=EntryId("unknown"))
 
     assert captured.value.code == "report.selection_unknown"
+
+
+def test_decision_report_rejects_self_as_competing_anchor(mixed_batch):
+    decision = build_reconciliation_report(mixed_batch).decision_for(
+        EntryId("anchor-conflict-a")
+    )
+
+    with pytest.raises(ReconciliationReportError) as captured:
+        replace(decision, competing_anchor_ids=(decision.anchor_id,))
+
+    assert captured.value.code == "report.competing_anchor_self"
 
 
 def test_summary_rejects_counts_that_do_not_sum_to_total():

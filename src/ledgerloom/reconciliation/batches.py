@@ -28,6 +28,15 @@ def _decision_order(decision: MatchDecision) -> tuple[object, EntryId]:
     return _entry_order(decision.anchor)
 
 
+def _claimed_candidate_id(decision: MatchDecision) -> EntryId | None:
+    if decision.status is DecisionStatus.MATCHED:
+        assert decision.selection is not None
+        return decision.selection.candidate.entry_id
+    if decision.status is DecisionStatus.CONFLICT:
+        return decision.contenders[0].candidate.entry_id
+    return None
+
+
 def _require_window(value: object) -> timedelta:
     if not isinstance(value, timedelta):
         raise ReconciliationBatchError(
@@ -139,11 +148,26 @@ class ReconciliationBatch:
                 path="$.batch.decisions",
                 message="matched decisions must not reuse a candidate entry",
             )
-        if set(anchor_ids).intersection(selected_ids):
+        claim_groups: dict[EntryId, list[EntryId]] = {}
+        for decision in ordered:
+            candidate_id = _claimed_candidate_id(decision)
+            if candidate_id is not None:
+                claim_groups.setdefault(candidate_id, []).append(decision.anchor.entry_id)
+        if set(anchor_ids).intersection(claim_groups):
             raise ReconciliationBatchError(
                 code="batch.entry_role_overlap",
                 path="$.batch.decisions",
-                message="one entry must not be both an anchor and a selected candidate",
+                message="one entry must not be both an anchor and a claimed candidate",
+            )
+        if any(
+            decision.status is DecisionStatus.CONFLICT
+            and len(claim_groups[_claimed_candidate_id(decision)]) < 2
+            for decision in ordered
+        ):
+            raise ReconciliationBatchError(
+                code="batch.orphan_conflict",
+                path="$.batch.decisions",
+                message="every conflict must identify another claim on its candidate",
             )
 
     def decision_for(self, anchor_id: EntryId) -> MatchDecision:

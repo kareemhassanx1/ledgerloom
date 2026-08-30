@@ -9,6 +9,7 @@ from ledgerloom.reconciliation import (
     CandidateIndex,
     CandidateSelectionPolicy,
     ConflictPolicy,
+    ConflictStrategy,
     DecisionPolicy,
     MatchScorer,
     ScoringRule,
@@ -103,4 +104,38 @@ def mixed_batch(make_entry, batch_reconciler):
         BatchId("reconcile-2026-08-30"),
         anchors,
         CandidateIndex(candidates),
+    )
+
+
+@pytest.fixture
+def preferred_conflict_batch(make_entry, batch_reconciler):
+    reconciler = BatchReconciler(
+        batch_reconciler.scorer,
+        batch_reconciler.decision_policy,
+        batch_reconciler.selection_policy,
+        ConflictPolicy(ConflictStrategy.PREFER_HIGHER_SCORE),
+    )
+    strong = make_entry(
+        "anchor-strong",
+        amount="50",
+        reference="invoice-shared",
+        occurred_at="2026-08-30T11:00:00Z",
+    )
+    weak = make_entry(
+        "anchor-weak",
+        amount="50",
+        reference=None,
+        occurred_at="2026-08-30T11:01:00Z",
+    )
+    shared = make_entry(
+        "candidate-shared",
+        source_id="processor",
+        amount="50",
+        reference="invoice-shared",
+        occurred_at="2026-08-30T11:00:30Z",
+    )
+    return reconciler.reconcile(
+        BatchId("reconcile-preferred-conflict"),
+        (weak, strong),
+        CandidateIndex((shared,)),
     )

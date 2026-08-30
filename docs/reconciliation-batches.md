@@ -26,10 +26,14 @@ roles in one batch.
 
 The result is a `ReconciliationBatch`. It rejects duplicate anchors and any
 remaining duplicate selected candidate, so constructing a successful batch can
-never bypass conflict resolution. It also rejects a selected candidate whose
+never bypass conflict resolution. It also rejects a claimed candidate whose
 identifier belongs to any batch anchor as a defensive invariant.
 `decision_for()` performs typed anchor lookup, and `matched_pairs` exposes
 conflict-free identifier pairs in batch order.
+
+A conflict must have at least two claims on its disputed candidate: another
+conflict or a uniquely winning matched decision. Orphan conflict objects are
+rejected rather than published without a real competing party.
 
 ## Structured report
 
@@ -51,7 +55,10 @@ rechecks these aggregates against the decision reports, rejects duplicate
 anchors, and rejects reuse of a selected candidate.
 
 Each `DecisionReport` records the final status, stable reason, selected candidate
-when matched, ordered contenders, and every ranked `CandidateReport`. Candidate
+when matched, ordered contenders, competing anchor identifiers, and every ranked
+`CandidateReport`. A rejected conflict names its peers; when score preference
+keeps a unique winner, that matched winner also names the anchors it displaced.
+Candidate
 reports preserve integer score, maximum score, exact basis-point confidence,
 required-rule identifiers and their failed or indeterminate subsets,
 required-rule status, score reason, and rule evidence. The `reason_codes`

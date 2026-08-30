@@ -215,6 +215,7 @@ class DecisionReport:
     reason_code: str
     selected_candidate_id: EntryId | None
     contender_ids: tuple[EntryId, ...]
+    competing_anchor_ids: tuple[EntryId, ...]
     candidates: tuple[CandidateReport, ...]
 
     def __post_init__(self) -> None:
@@ -256,6 +257,35 @@ class DecisionReport:
                 code="report.contender_duplicate",
                 path="$.decision.contender_ids",
                 message="contender identifiers must be unique",
+            )
+        if not isinstance(self.competing_anchor_ids, tuple) or not all(
+            isinstance(item, EntryId) for item in self.competing_anchor_ids
+        ):
+            raise ReconciliationReportError(
+                code="report.competing_anchor_ids_type",
+                path="$.decision.competing_anchor_ids",
+                message="competing_anchor_ids must be a tuple of EntryId values",
+            )
+        if len(self.competing_anchor_ids) != len(set(self.competing_anchor_ids)):
+            raise ReconciliationReportError(
+                code="report.competing_anchor_duplicate",
+                path="$.decision.competing_anchor_ids",
+                message="competing anchor identifiers must be unique",
+            )
+        if self.anchor_id in self.competing_anchor_ids:
+            raise ReconciliationReportError(
+                code="report.competing_anchor_self",
+                path="$.decision.competing_anchor_ids",
+                message="an anchor must not compete with itself",
+            )
+        if self.competing_anchor_ids and self.status not in {
+            DecisionStatus.MATCHED,
+            DecisionStatus.CONFLICT,
+        }:
+            raise ReconciliationReportError(
+                code="report.competing_anchor_status",
+                path="$.decision.competing_anchor_ids",
+                message="only matched or conflict reports may name competing anchors",
             )
         if not isinstance(self.candidates, tuple) or not all(
             isinstance(item, CandidateReport) for item in self.candidates
@@ -336,9 +366,20 @@ class DecisionReport:
                 path="$.decision.contender_ids",
                 message="conflict report must retain one disputed contender",
             )
+        if self.status is DecisionStatus.CONFLICT and not self.competing_anchor_ids:
+            raise ReconciliationReportError(
+                code="report.conflict_peer_missing",
+                path="$.decision.competing_anchor_ids",
+                message="conflict report must name at least one competing anchor",
+            )
 
     @classmethod
-    def from_decision(cls, decision: MatchDecision) -> DecisionReport:
+    def from_decision(
+        cls,
+        decision: MatchDecision,
+        *,
+        competing_anchor_ids: tuple[EntryId, ...] = (),
+    ) -> DecisionReport:
         if not isinstance(decision, MatchDecision):
             raise ReconciliationReportError(
                 code="report.decision_type",
@@ -353,6 +394,7 @@ class DecisionReport:
                 None if decision.selection is None else decision.selection.candidate.entry_id
             ),
             contender_ids=tuple(item.candidate.entry_id for item in decision.contenders),
+            competing_anchor_ids=competing_anchor_ids,
             candidates=tuple(CandidateReport.from_score(item) for item in decision.ranking),
         )
 
@@ -552,9 +594,13 @@ class ReconciliationReport:
                 else str(decision.selected_candidate_id)
             )
             contenders = ",".join(str(item) for item in decision.contender_ids) or "none"
+            competitors = (
+                ",".join(str(item) for item in decision.competing_anchor_ids) or "none"
+            )
             lines.append(
                 f"{decision.anchor_id}: {decision.status} "
-                f"reason={decision.reason_code} selected={selected} contenders={contenders}"
+                f"reason={decision.reason_code} selected={selected} "
+                f"contenders={contenders} competitors={competitors}"
             )
             lines.extend(
                 f"  {candidate.candidate_id}: score={candidate.score}/{candidate.maximum_score} "
@@ -574,8 +620,39 @@ def build_reconciliation_report(batch: ReconciliationBatch) -> ReconciliationRep
             path="$.batch",
             message="batch must be a ReconciliationBatch",
         )
+    claims: dict[EntryId, list[EntryId]] = {}
+    for decision in batch.decisions:
+        candidate_id: EntryId | None = None
+        if decision.status is DecisionStatus.MATCHED:
+            assert decision.selection is not None
+            candidate_id = decision.selection.candidate.entry_id
+        elif decision.status is DecisionStatus.CONFLICT:
+            candidate_id = decision.contenders[0].candidate.entry_id
+        if candidate_id is not None:
+            claims.setdefault(candidate_id, []).append(decision.anchor.entry_id)
+
+    reports: list[DecisionReport] = []
+    for decision in batch.decisions:
+        candidate_id = None
+        if decision.status is DecisionStatus.MATCHED:
+            assert decision.selection is not None
+            candidate_id = decision.selection.candidate.entry_id
+        elif decision.status is DecisionStatus.CONFLICT:
+            candidate_id = decision.contenders[0].candidate.entry_id
+        competing_anchor_ids = tuple(
+            anchor_id
+            for anchor_id in (() if candidate_id is None else claims[candidate_id])
+            if anchor_id != decision.anchor.entry_id
+        )
+        reports.append(
+            DecisionReport.from_decision(
+                decision,
+                competing_anchor_ids=competing_anchor_ids,
+            )
+        )
+
     return ReconciliationReport(
         batch.batch_id,
         ReconciliationSummary.from_decisions(batch.decisions),
-        tuple(DecisionReport.from_decision(item) for item in batch.decisions),
+        tuple(reports),
     )

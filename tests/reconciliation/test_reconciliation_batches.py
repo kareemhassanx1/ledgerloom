@@ -13,6 +13,7 @@ from ledgerloom.reconciliation import (
     ConflictStrategy,
     DecisionPolicy,
     DecisionStatus,
+    MatchDecision,
     MatchScorer,
     ReconciliationBatch,
     ReconciliationBatchError,
@@ -206,6 +207,25 @@ def test_batch_rejects_an_anchor_selected_as_another_anchors_candidate(make_entr
         ReconciliationBatch(BatchId("batch-role-overlap"), decisions)
 
     assert captured.value.code == "batch.entry_role_overlap"
+
+
+def test_batch_rejects_a_conflict_without_a_competing_claim(make_entry):
+    scorer = MatchScorer((ScoringRule(SameAccountRule(), 10),))
+    anchor = make_entry("anchor")
+    candidate = make_entry("candidate")
+    score = scorer.score(anchor, candidate)
+    conflict = MatchDecision(
+        anchor,
+        DecisionStatus.CONFLICT,
+        "conflict.shared_candidate",
+        (score,),
+        contenders=(score,),
+    )
+
+    with pytest.raises(ReconciliationBatchError) as captured:
+        ReconciliationBatch(BatchId("batch-orphan-conflict"), (conflict,))
+
+    assert captured.value.code == "batch.orphan_conflict"
 
 
 def test_batch_sorts_decisions_and_looks_them_up_by_typed_id(make_entry):
