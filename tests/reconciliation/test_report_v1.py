@@ -5,9 +5,18 @@ from ledgerloom.reconciliation import (
     ReconciliationReportError,
     build_reconciliation_report,
     build_reconciliation_report_document,
+    decode_reconciliation_report,
     encode_reconciliation_report,
+    parse_reconciliation_report_document,
 )
-from ledgerloom.serialization import ContentFingerprint, loads_canonical_json
+from ledgerloom.serialization import (
+    ContentFingerprint,
+    SchemaDocument,
+    SchemaRef,
+    SerializationError,
+    canonical_json_bytes,
+    loads_canonical_json,
+)
 
 
 def test_report_document_is_canonical_versioned_and_fingerprinted(mixed_batch):
@@ -55,3 +64,57 @@ def test_report_encoder_rejects_non_report_values():
         encode_reconciliation_report(object())  # type: ignore[arg-type]
 
     assert captured.value.code == "report.encode_type"
+
+
+def test_report_document_round_trips_through_verified_models(mixed_batch):
+    expected = build_reconciliation_report(mixed_batch)
+    document = build_reconciliation_report_document(expected)
+
+    decoded = parse_reconciliation_report_document(
+        document.content,
+        expected_fingerprint=document.fingerprint,
+    )
+
+    assert decoded == expected
+    assert decode_reconciliation_report(document.payload) == expected
+
+
+def test_report_parser_rejects_a_changed_document_against_expected_fingerprint(
+    mixed_batch,
+):
+    document = build_reconciliation_report_document(
+        build_reconciliation_report(mixed_batch)
+    )
+    envelope = loads_canonical_json(document.content)
+    envelope["payload"]["batch_id"] = "changed-batch"
+    changed = canonical_json_bytes(envelope)
+
+    with pytest.raises(SerializationError) as captured:
+        parse_reconciliation_report_document(
+            changed,
+            expected_fingerprint=document.fingerprint,
+        )
+
+    assert captured.value.code == "fingerprint.mismatch"
+
+
+def test_report_parser_rejects_a_different_schema():
+    document = SchemaDocument.build(
+        SchemaRef.parse("ledgerloom.other_report", "1.0"),
+        {},
+    )
+
+    with pytest.raises(SerializationError) as captured:
+        parse_reconciliation_report_document(document.content)
+
+    assert captured.value.code == "report.schema_mismatch"
+
+
+def test_report_decoder_rechecks_summary_invariants(mixed_batch):
+    payload = encode_reconciliation_report(build_reconciliation_report(mixed_batch))
+    payload["summary"]["matched"] = 5
+
+    with pytest.raises(SerializationError) as captured:
+        decode_reconciliation_report(payload)
+
+    assert captured.value.code == "report.payload_invalid"

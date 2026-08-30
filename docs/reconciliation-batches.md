@@ -60,6 +60,11 @@ floor-rounded matched share on a 0 through 10,000 scale. Report construction
 rechecks these aggregates against the decision reports, rejects duplicate
 anchors, and rejects reuse of a selected candidate.
 
+Each reconciler-created decision also retains privacy-safe selection counts for
+the indexed population, account, amount, time and reference filters, batch-anchor
+exclusions, and final evaluated set. These counts explain an empty ranking
+without copying rejected ledger values into the report.
+
 `decision_reason_counts` groups final decision reasons into lexically ordered
 `ReasonCount` values. `decisions_with_status()` and `decisions_with_reason()`
 return matching items without changing batch order. These structured queries
@@ -86,6 +91,20 @@ amounts, references, or the scalar facts inside rule evidence. A future CLI can
 use the structured report directly or apply a different presentation policy.
 When present, the batch's policy snapshot is rendered before individual
 decisions so an inspected log includes its decision context.
+
+## Canonical report documents
+
+`build_reconciliation_report_document()` encodes the complete structured report
+under the versioned `ledgerloom.reconciliation_report@1.0` schema. The resulting
+`SchemaDocument` contains canonical UTF-8 JSON and its SHA-256 content
+fingerprint. Unlike the privacy-conscious text rendering, this machine-readable
+document includes evidence facts and should be handled as reconciliation data.
+
+`parse_reconciliation_report_document()` verifies canonical encoding, the schema
+identifier, an optional expected fingerprint, and every report invariant before
+returning typed immutable models. Changed content, an unexpected schema, or
+internally inconsistent counts fail instead of producing a partially trusted
+report.
 
 ## Example
 

@@ -31,7 +31,9 @@ from ledgerloom.reconciliation.errors import (
 from ledgerloom.reconciliation.report_v1 import (
     RECONCILIATION_REPORT_V1,
     build_reconciliation_report_document,
+    decode_reconciliation_report,
     encode_reconciliation_report,
+    parse_reconciliation_report_document,
 )
 from ledgerloom.reconciliation.reports import (
     CandidateReport,
@@ -87,5 +89,7 @@ __all__ = [
     "SelectionReport",
     "build_reconciliation_report",
     "build_reconciliation_report_document",
+    "decode_reconciliation_report",
     "encode_reconciliation_report",
+    "parse_reconciliation_report_document",
 ]
