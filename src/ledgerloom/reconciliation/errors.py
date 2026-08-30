@@ -25,3 +25,11 @@ class ScoringError(ReconciliationError):
 
 class DecisionError(ReconciliationError):
     """Describe an invalid decision or conflict policy operation."""
+
+
+class ReconciliationBatchError(ReconciliationError):
+    """Describe invalid batch configuration, inputs, or outcomes."""
+
+
+class ReconciliationReportError(ReconciliationError):
+    """Describe an inconsistent structured reconciliation report."""

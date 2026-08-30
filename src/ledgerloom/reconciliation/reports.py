@@ -1,0 +1,511 @@
+"""Structured, deterministic reports for reconciliation batch outcomes."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+from ledgerloom.domain.identifiers import BatchId, EntryId
+from ledgerloom.reconciliation.batches import ReconciliationBatch
+from ledgerloom.reconciliation.decisions import DecisionStatus, MatchDecision
+from ledgerloom.reconciliation.errors import ReconciliationReportError
+from ledgerloom.reconciliation.scoring import BASIS_POINT_SCALE, MAX_TOTAL_SCORE, CandidateScore
+from ledgerloom.rules import RuleEvidence
+from ledgerloom.rules.evidence import validate_rule_code
+
+
+def _require_count(value: object, *, path: str, label: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ReconciliationReportError(
+            code="report.count_type",
+            path=path,
+            message=f"{label} must be an integer",
+        )
+    if value < 0:
+        raise ReconciliationReportError(
+            code="report.count_range",
+            path=path,
+            message=f"{label} must not be negative",
+        )
+    return value
+
+
+@dataclass(frozen=True, slots=True)
+class CandidateReport:
+    """Portable explanation of one candidate without retaining its entry object."""
+
+    candidate_id: EntryId
+    score: int
+    maximum_score: int
+    confidence_basis_points: int
+    required_rules_satisfied: bool
+    reason_code: str
+    evidence: tuple[RuleEvidence, ...]
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.candidate_id, EntryId):
+            raise ReconciliationReportError(
+                code="report.candidate_id_type",
+                path="$.candidate.candidate_id",
+                message="candidate_id must be an EntryId",
+            )
+        _require_count(self.maximum_score, path="$.candidate.maximum_score", label="maximum score")
+        if not 1 <= self.maximum_score <= MAX_TOTAL_SCORE:
+            raise ReconciliationReportError(
+                code="report.maximum_score_range",
+                path="$.candidate.maximum_score",
+                message=f"maximum score must be between 1 and {MAX_TOTAL_SCORE}",
+            )
+        _require_count(self.score, path="$.candidate.score", label="score")
+        if self.score > self.maximum_score:
+            raise ReconciliationReportError(
+                code="report.score_range",
+                path="$.candidate.score",
+                message="score must not exceed maximum score",
+            )
+        _require_count(
+            self.confidence_basis_points,
+            path="$.candidate.confidence_basis_points",
+            label="confidence basis points",
+        )
+        expected_confidence = (self.score * BASIS_POINT_SCALE) // self.maximum_score
+        if self.confidence_basis_points != expected_confidence:
+            raise ReconciliationReportError(
+                code="report.confidence_mismatch",
+                path="$.candidate.confidence_basis_points",
+                message="confidence basis points do not match score and maximum score",
+            )
+        if not isinstance(self.required_rules_satisfied, bool):
+            raise ReconciliationReportError(
+                code="report.required_status_type",
+                path="$.candidate.required_rules_satisfied",
+                message="required rule status must be a boolean",
+            )
+        validate_rule_code(
+            self.reason_code,
+            path="$.candidate.reason_code",
+            kind="reason_code",
+        )
+        if not isinstance(self.evidence, tuple) or not self.evidence:
+            raise ReconciliationReportError(
+                code="report.evidence_type",
+                path="$.candidate.evidence",
+                message="evidence must be a non-empty tuple",
+            )
+        if not all(isinstance(item, RuleEvidence) for item in self.evidence):
+            raise ReconciliationReportError(
+                code="report.evidence_item_type",
+                path="$.candidate.evidence",
+                message="evidence must contain only RuleEvidence values",
+            )
+        rule_ids = tuple(item.rule_id for item in self.evidence)
+        if len(rule_ids) != len(set(rule_ids)):
+            raise ReconciliationReportError(
+                code="report.evidence_duplicate",
+                path="$.candidate.evidence",
+                message="evidence rule identifiers must be unique",
+            )
+
+    @classmethod
+    def from_score(cls, score: CandidateScore) -> CandidateReport:
+        if not isinstance(score, CandidateScore):
+            raise ReconciliationReportError(
+                code="report.score_type",
+                path="$.score",
+                message="score must be a CandidateScore",
+            )
+        return cls(
+            score.candidate.entry_id,
+            score.score,
+            score.maximum_score,
+            score.confidence_basis_points,
+            score.required_rules_satisfied,
+            score.reason_code,
+            score.evidence,
+        )
+
+    @property
+    def reason_codes(self) -> tuple[str, ...]:
+        """Return score and nested rule reasons in deterministic traversal order."""
+
+        codes = [self.reason_code]
+        codes.extend(
+            item.reason_code
+            for evidence in self.evidence
+            for item in evidence.walk()
+        )
+        return tuple(dict.fromkeys(codes))
+
+
+@dataclass(frozen=True, slots=True)
+class DecisionReport:
+    """Explain one final anchor status and every candidate considered for it."""
+
+    anchor_id: EntryId
+    status: DecisionStatus
+    reason_code: str
+    selected_candidate_id: EntryId | None
+    contender_ids: tuple[EntryId, ...]
+    candidates: tuple[CandidateReport, ...]
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.anchor_id, EntryId):
+            raise ReconciliationReportError(
+                code="report.anchor_id_type",
+                path="$.decision.anchor_id",
+                message="anchor_id must be an EntryId",
+            )
+        if not isinstance(self.status, DecisionStatus):
+            raise ReconciliationReportError(
+                code="report.status_type",
+                path="$.decision.status",
+                message="status must be a DecisionStatus",
+            )
+        validate_rule_code(
+            self.reason_code,
+            path="$.decision.reason_code",
+            kind="reason_code",
+        )
+        if self.selected_candidate_id is not None and not isinstance(
+            self.selected_candidate_id, EntryId
+        ):
+            raise ReconciliationReportError(
+                code="report.selected_id_type",
+                path="$.decision.selected_candidate_id",
+                message="selected_candidate_id must be an EntryId or None",
+            )
+        if not isinstance(self.contender_ids, tuple) or not all(
+            isinstance(item, EntryId) for item in self.contender_ids
+        ):
+            raise ReconciliationReportError(
+                code="report.contender_ids_type",
+                path="$.decision.contender_ids",
+                message="contender_ids must be a tuple of EntryId values",
+            )
+        if len(self.contender_ids) != len(set(self.contender_ids)):
+            raise ReconciliationReportError(
+                code="report.contender_duplicate",
+                path="$.decision.contender_ids",
+                message="contender identifiers must be unique",
+            )
+        if not isinstance(self.candidates, tuple) or not all(
+            isinstance(item, CandidateReport) for item in self.candidates
+        ):
+            raise ReconciliationReportError(
+                code="report.candidates_type",
+                path="$.decision.candidates",
+                message="candidates must be a tuple of CandidateReport values",
+            )
+        candidate_ids = tuple(item.candidate_id for item in self.candidates)
+        if len(candidate_ids) != len(set(candidate_ids)):
+            raise ReconciliationReportError(
+                code="report.candidate_duplicate",
+                path="$.decision.candidates",
+                message="candidate identifiers must be unique",
+            )
+        if any(item not in candidate_ids for item in self.contender_ids):
+            raise ReconciliationReportError(
+                code="report.contender_unknown",
+                path="$.decision.contender_ids",
+                message="every contender must occur in candidates",
+            )
+        expected_contenders = tuple(item for item in candidate_ids if item in self.contender_ids)
+        if self.contender_ids != expected_contenders:
+            raise ReconciliationReportError(
+                code="report.contender_order",
+                path="$.decision.contender_ids",
+                message="contenders must preserve candidate ranking order",
+            )
+        if (
+            self.selected_candidate_id is not None
+            and self.selected_candidate_id not in candidate_ids
+        ):
+            raise ReconciliationReportError(
+                code="report.selection_unknown",
+                path="$.decision.selected_candidate_id",
+                message="selected candidate must occur in candidates",
+            )
+        if any(
+            left.score < right.score
+            for left, right in zip(self.candidates, self.candidates[1:], strict=False)
+        ):
+            raise ReconciliationReportError(
+                code="report.candidate_order",
+                path="$.decision.candidates",
+                message="candidate scores must be in descending order",
+            )
+        if self.status is DecisionStatus.MATCHED:
+            if self.selected_candidate_id is None or self.contender_ids != (
+                self.selected_candidate_id,
+            ):
+                raise ReconciliationReportError(
+                    code="report.matched_shape",
+                    path="$.decision",
+                    message="matched report must select its sole contender",
+                )
+        elif self.selected_candidate_id is not None:
+            raise ReconciliationReportError(
+                code="report.unselected_shape",
+                path="$.decision.selected_candidate_id",
+                message="only a matched report may contain a selection",
+            )
+        if self.status is DecisionStatus.AMBIGUOUS and len(self.contender_ids) < 2:
+            raise ReconciliationReportError(
+                code="report.ambiguous_shape",
+                path="$.decision.contender_ids",
+                message="ambiguous report must contain at least two contenders",
+            )
+        if self.status is DecisionStatus.UNMATCHED and self.contender_ids:
+            raise ReconciliationReportError(
+                code="report.unmatched_shape",
+                path="$.decision.contender_ids",
+                message="unmatched report must not contain contenders",
+            )
+        if self.status is DecisionStatus.CONFLICT and len(self.contender_ids) != 1:
+            raise ReconciliationReportError(
+                code="report.conflict_shape",
+                path="$.decision.contender_ids",
+                message="conflict report must retain one disputed contender",
+            )
+
+    @classmethod
+    def from_decision(cls, decision: MatchDecision) -> DecisionReport:
+        if not isinstance(decision, MatchDecision):
+            raise ReconciliationReportError(
+                code="report.decision_type",
+                path="$.decision",
+                message="decision must be a MatchDecision",
+            )
+        return cls(
+            anchor_id=decision.anchor.entry_id,
+            status=decision.status,
+            reason_code=decision.reason_code,
+            selected_candidate_id=(
+                None if decision.selection is None else decision.selection.candidate.entry_id
+            ),
+            contender_ids=tuple(item.candidate.entry_id for item in decision.contenders),
+            candidates=tuple(CandidateReport.from_score(item) for item in decision.ranking),
+        )
+
+    def candidate(self, candidate_id: EntryId) -> CandidateReport:
+        """Return one candidate explanation, raising ``KeyError`` when absent."""
+
+        if not isinstance(candidate_id, EntryId):
+            raise ReconciliationReportError(
+                code="report.candidate_id_type",
+                path="$.candidate_id",
+                message="candidate_id must be an EntryId",
+            )
+        for candidate in self.candidates:
+            if candidate.candidate_id == candidate_id:
+                return candidate
+        raise KeyError(candidate_id)
+
+    @property
+    def reason_codes(self) -> tuple[str, ...]:
+        """Return decision, score, and rule reasons without duplicates."""
+
+        codes = [self.reason_code]
+        codes.extend(code for candidate in self.candidates for code in candidate.reason_codes)
+        return tuple(dict.fromkeys(codes))
+
+
+@dataclass(frozen=True, slots=True)
+class ReconciliationSummary:
+    """Exact aggregate counts for one reconciliation batch."""
+
+    total: int
+    matched: int
+    unmatched: int
+    ambiguous: int
+    conflict: int
+    evaluated_candidates: int
+    coverage_basis_points: int
+
+    def __post_init__(self) -> None:
+        for field_name in (
+            "total",
+            "matched",
+            "unmatched",
+            "ambiguous",
+            "conflict",
+            "evaluated_candidates",
+            "coverage_basis_points",
+        ):
+            _require_count(
+                getattr(self, field_name),
+                path=f"$.summary.{field_name}",
+                label=field_name.replace("_", " "),
+            )
+        if self.total < 1:
+            raise ReconciliationReportError(
+                code="report.summary_empty",
+                path="$.summary.total",
+                message="summary total must be at least one",
+            )
+        if self.matched + self.unmatched + self.ambiguous + self.conflict != self.total:
+            raise ReconciliationReportError(
+                code="report.summary_count_mismatch",
+                path="$.summary",
+                message="status counts must sum to total",
+            )
+        expected_coverage = (self.matched * BASIS_POINT_SCALE) // self.total
+        if self.coverage_basis_points != expected_coverage:
+            raise ReconciliationReportError(
+                code="report.summary_coverage_mismatch",
+                path="$.summary.coverage_basis_points",
+                message="coverage basis points do not match matched and total counts",
+            )
+
+    @classmethod
+    def from_decisions(cls, decisions: tuple[MatchDecision, ...]) -> ReconciliationSummary:
+        total = len(decisions)
+        matched = sum(item.status is DecisionStatus.MATCHED for item in decisions)
+        return cls(
+            total=total,
+            matched=matched,
+            unmatched=sum(item.status is DecisionStatus.UNMATCHED for item in decisions),
+            ambiguous=sum(item.status is DecisionStatus.AMBIGUOUS for item in decisions),
+            conflict=sum(item.status is DecisionStatus.CONFLICT for item in decisions),
+            evaluated_candidates=sum(len(item.ranking) for item in decisions),
+            coverage_basis_points=(matched * 10_000) // total,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class ReconciliationReport:
+    """A stable summary and ordered explanation snapshot for one batch."""
+
+    batch_id: BatchId
+    summary: ReconciliationSummary
+    decisions: tuple[DecisionReport, ...]
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.batch_id, BatchId):
+            raise ReconciliationReportError(
+                code="report.batch_id_type",
+                path="$.report.batch_id",
+                message="batch_id must be a BatchId",
+            )
+        if not isinstance(self.summary, ReconciliationSummary):
+            raise ReconciliationReportError(
+                code="report.summary_type",
+                path="$.report.summary",
+                message="summary must be a ReconciliationSummary",
+            )
+        if not isinstance(self.decisions, tuple) or not self.decisions:
+            raise ReconciliationReportError(
+                code="report.decisions_type",
+                path="$.report.decisions",
+                message="decisions must be a non-empty tuple",
+            )
+        if not all(isinstance(item, DecisionReport) for item in self.decisions):
+            raise ReconciliationReportError(
+                code="report.decision_item_type",
+                path="$.report.decisions",
+                message="decisions must contain only DecisionReport values",
+            )
+        anchor_ids = tuple(item.anchor_id for item in self.decisions)
+        if len(anchor_ids) != len(set(anchor_ids)):
+            raise ReconciliationReportError(
+                code="report.anchor_duplicate",
+                path="$.report.decisions",
+                message="anchor identifiers must be unique",
+            )
+        actual_counts = {
+            status: sum(item.status is status for item in self.decisions)
+            for status in DecisionStatus
+        }
+        if (
+            self.summary.total != len(self.decisions)
+            or self.summary.matched != actual_counts[DecisionStatus.MATCHED]
+            or self.summary.unmatched != actual_counts[DecisionStatus.UNMATCHED]
+            or self.summary.ambiguous != actual_counts[DecisionStatus.AMBIGUOUS]
+            or self.summary.conflict != actual_counts[DecisionStatus.CONFLICT]
+            or self.summary.evaluated_candidates
+            != sum(len(item.candidates) for item in self.decisions)
+        ):
+            raise ReconciliationReportError(
+                code="report.summary_mismatch",
+                path="$.report.summary",
+                message="summary does not match report decisions",
+            )
+        selected_ids = tuple(
+            item.selected_candidate_id
+            for item in self.decisions
+            if item.selected_candidate_id is not None
+        )
+        if len(selected_ids) != len(set(selected_ids)):
+            raise ReconciliationReportError(
+                code="report.selection_duplicate",
+                path="$.report.decisions",
+                message="matched reports must not reuse a candidate",
+            )
+
+    def decision_for(self, anchor_id: EntryId) -> DecisionReport:
+        if not isinstance(anchor_id, EntryId):
+            raise ReconciliationReportError(
+                code="report.anchor_id_type",
+                path="$.anchor_id",
+                message="anchor_id must be an EntryId",
+            )
+        for decision in self.decisions:
+            if decision.anchor_id == anchor_id:
+                return decision
+        raise KeyError(anchor_id)
+
+    @property
+    def matched_pairs(self) -> tuple[tuple[EntryId, EntryId], ...]:
+        pairs: list[tuple[EntryId, EntryId]] = []
+        for decision in self.decisions:
+            if decision.selected_candidate_id is not None:
+                pairs.append((decision.anchor_id, decision.selected_candidate_id))
+        return tuple(pairs)
+
+    def render_text(self) -> str:
+        """Render a deterministic, concise report suitable for logs or inspection."""
+
+        summary = self.summary
+        lines = [
+            f"Reconciliation batch {self.batch_id}",
+            (
+                "Summary: "
+                f"total={summary.total} matched={summary.matched} "
+                f"unmatched={summary.unmatched} ambiguous={summary.ambiguous} "
+                f"conflict={summary.conflict} candidates={summary.evaluated_candidates} "
+                f"coverage_bp={summary.coverage_basis_points}"
+            ),
+        ]
+        for decision in self.decisions:
+            selected = (
+                "none"
+                if decision.selected_candidate_id is None
+                else str(decision.selected_candidate_id)
+            )
+            contenders = ",".join(str(item) for item in decision.contender_ids) or "none"
+            lines.append(
+                f"{decision.anchor_id}: {decision.status} "
+                f"reason={decision.reason_code} selected={selected} contenders={contenders}"
+            )
+            lines.extend(
+                f"  {candidate.candidate_id}: score={candidate.score}/{candidate.maximum_score} "
+                f"eligible={str(candidate.required_rules_satisfied).lower()} "
+                f"reason={candidate.reason_code}"
+                for candidate in decision.candidates
+            )
+        return "\n".join(lines) + "\n"
+
+
+def build_reconciliation_report(batch: ReconciliationBatch) -> ReconciliationReport:
+    """Snapshot a verified batch without re-running any reconciliation logic."""
+
+    if not isinstance(batch, ReconciliationBatch):
+        raise ReconciliationReportError(
+            code="report.batch_type",
+            path="$.batch",
+            message="batch must be a ReconciliationBatch",
+        )
+    return ReconciliationReport(
+        batch.batch_id,
+        ReconciliationSummary.from_decisions(batch.decisions),
+        tuple(DecisionReport.from_decision(item) for item in batch.decisions),
+    )
