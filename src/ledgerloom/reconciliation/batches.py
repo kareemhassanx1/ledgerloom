@@ -19,6 +19,7 @@ from ledgerloom.reconciliation.decisions import (
 )
 from ledgerloom.reconciliation.errors import ReconciliationBatchError
 from ledgerloom.reconciliation.scoring import MAX_RULE_WEIGHT, MAX_TOTAL_SCORE, MatchScorer
+from ledgerloom.rules import MatchVerdict
 from ledgerloom.rules.evidence import validate_rule_code
 
 
@@ -209,6 +210,18 @@ class ReconciliationPolicySnapshot:
                 message="conflict_strategy must be a ConflictStrategy",
             )
 
+    @property
+    def maximum_score(self) -> int:
+        """Return the exact score scale implied by the retained rule weights."""
+
+        return sum(item.weight for item in self.scoring_rules)
+
+    @property
+    def required_rule_ids(self) -> tuple[str, ...]:
+        """Return required rule identifiers in evaluation order."""
+
+        return tuple(item.rule_id for item in self.scoring_rules if item.required)
+
 
 @dataclass(frozen=True, slots=True)
 class ReconciliationBatch:
@@ -292,6 +305,47 @@ class ReconciliationBatch:
                 path="$.batch.decisions",
                 message="every conflict must identify another claim on its candidate",
             )
+        if self.policy_snapshot is not None:
+            expected_rule_ids = tuple(
+                item.rule_id for item in self.policy_snapshot.scoring_rules
+            )
+            expected_required_ids = self.policy_snapshot.required_rule_ids
+            expected_maximum = self.policy_snapshot.maximum_score
+            weights = {
+                item.rule_id: item.weight for item in self.policy_snapshot.scoring_rules
+            }
+            for decision in ordered:
+                for candidate in decision.ranking:
+                    evidence_rule_ids = tuple(item.rule_id for item in candidate.evidence)
+                    if evidence_rule_ids != expected_rule_ids:
+                        raise ReconciliationBatchError(
+                            code="batch.policy_rule_mismatch",
+                            path="$.batch.decisions.ranking.evidence",
+                            message="candidate evidence must match policy rules and order",
+                        )
+                    if candidate.required_rule_ids != expected_required_ids:
+                        raise ReconciliationBatchError(
+                            code="batch.policy_required_mismatch",
+                            path="$.batch.decisions.ranking.required_rule_ids",
+                            message="candidate required rules must match the policy snapshot",
+                        )
+                    if candidate.maximum_score != expected_maximum:
+                        raise ReconciliationBatchError(
+                            code="batch.policy_maximum_mismatch",
+                            path="$.batch.decisions.ranking.maximum_score",
+                            message="candidate maximum score must match policy rule weights",
+                        )
+                    expected_score = sum(
+                        weights[item.rule_id]
+                        for item in candidate.evidence
+                        if item.verdict is MatchVerdict.MATCH
+                    )
+                    if candidate.score != expected_score:
+                        raise ReconciliationBatchError(
+                            code="batch.policy_score_mismatch",
+                            path="$.batch.decisions.ranking.score",
+                            message="candidate score must match policy weights and evidence",
+                        )
 
     def decision_for(self, anchor_id: EntryId) -> MatchDecision:
         """Return one anchor decision, raising ``KeyError`` when absent."""

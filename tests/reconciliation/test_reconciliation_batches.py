@@ -346,3 +346,36 @@ def test_policy_snapshot_rejects_duplicate_rule_identifiers():
         )
 
     assert captured.value.code == "batch.policy_rule_duplicate"
+
+
+def test_batch_rejects_scores_inconsistent_with_its_policy_snapshot(
+    make_entry,
+    batch_reconciler,
+):
+    anchor = make_entry("anchor")
+    candidate = make_entry("candidate")
+    decision = batch_reconciler.decision_policy.decide(
+        anchor,
+        batch_reconciler.scorer.rank(anchor, (candidate,)),
+    )
+    incompatible = ReconciliationPolicySnapshot(
+        (ScoringRuleSnapshot("ledgerloom.same_account", 1, True),),
+        0,
+        0,
+        timedelta(0),
+        Decimal("0"),
+        False,
+        ConflictStrategy.REJECT_ALL,
+    )
+
+    with pytest.raises(ReconciliationBatchError) as captured:
+        ReconciliationBatch(BatchId("batch-policy-mismatch"), (decision,), incompatible)
+
+    assert captured.value.code == "batch.policy_rule_mismatch"
+
+
+def test_policy_snapshot_exposes_score_scale_and_required_rules(batch_reconciler):
+    snapshot = batch_reconciler.policy_snapshot
+
+    assert snapshot.maximum_score == batch_reconciler.scorer.maximum_score
+    assert snapshot.required_rule_ids == ("ledgerloom.same_account",)
