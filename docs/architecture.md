@@ -98,6 +98,13 @@ verified against report decisions, so an inconsistent aggregate cannot be
 published through the public model. The optional text renderer omits evidence
 facts such as references and amounts.
 
+Input-aware reconciliation reports join those decisions back to the ordered
+`LedgerBatch` validation results. They cover accepted and rejected positions in
+one immutable view, classify conflict decisions as operationally ambiguous while
+retaining the detailed conflict status, and explain invalid inputs with safe
+diagnostics that omit rejected values. Exact anchor-set and anchor-content checks
+prevent an input batch from being paired with unrelated reconciliation output.
+
 `ledgerloom.ingest`
 : Parsers and validation pipelines for external record formats. Import failures
   are data, not control-flow exceptions, so one bad row does not hide later rows.

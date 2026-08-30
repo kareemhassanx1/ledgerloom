@@ -92,6 +92,33 @@ use the structured report directly or apply a different presentation policy.
 When present, the batch's policy snapshot is rendered before individual
 decisions so an inspected log includes its decision context.
 
+## Input-aware reports
+
+`build_input_reconciliation_report()` joins a source `LedgerBatch` to the
+`ReconciliationBatch` produced for exactly its accepted entries. The resulting
+`InputReconciliationReport` retains every original one-based input position,
+including rejected inputs that could never become reconciliation anchors.
+
+Its operational summary distinguishes the four complete input outcomes:
+
+- `matched` for a unique accepted match;
+- `unmatched` when no candidate qualifies;
+- `ambiguous` when multiple candidates remain or anchors conflict over one
+  candidate; and
+- `invalid` when input validation produced no ledger entry.
+
+Conflict remains available as the nested decision status and keeps its reason,
+contender, and competing-anchor details; grouping it under `ambiguous` only
+provides the four-way operational view. Invalid outcomes retain safe structured
+diagnostics but never a rejected source value. Accepted warnings are also kept
+beside the matching decision. An all-invalid input batch can therefore produce
+a complete report without fabricating an empty reconciliation batch.
+
+The builder rejects missing, extra, or changed anchors instead of joining two
+unrelated batches by position. `render_text()` emits identifiers, positions,
+statuses, diagnostic codes, and field names, while omitting rejected values and
+rule-evidence facts.
+
 ## Canonical report documents
 
 `build_reconciliation_report_document()` encodes the complete structured report

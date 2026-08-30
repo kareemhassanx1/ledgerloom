@@ -28,6 +28,13 @@ from ledgerloom.reconciliation.errors import (
     ReconciliationReportError,
     ScoringError,
 )
+from ledgerloom.reconciliation.input_reports import (
+    InputOutcomeReport,
+    InputReconciliationReport,
+    InputReconciliationSummary,
+    ReconciliationRecordStatus,
+    build_input_reconciliation_report,
+)
 from ledgerloom.reconciliation.report_v1 import (
     RECONCILIATION_REPORT_V1,
     build_reconciliation_report_document,
@@ -73,6 +80,9 @@ __all__ = [
     "DecisionPolicy",
     "DecisionReport",
     "DecisionStatus",
+    "InputOutcomeReport",
+    "InputReconciliationReport",
+    "InputReconciliationSummary",
     "MatchDecision",
     "MatchScorer",
     "ReasonCount",
@@ -80,6 +90,7 @@ __all__ = [
     "ReconciliationBatchError",
     "ReconciliationError",
     "ReconciliationPolicySnapshot",
+    "ReconciliationRecordStatus",
     "ReconciliationReport",
     "ReconciliationReportError",
     "ReconciliationSummary",
@@ -87,6 +98,7 @@ __all__ = [
     "ScoringRule",
     "ScoringRuleSnapshot",
     "SelectionReport",
+    "build_input_reconciliation_report",
     "build_reconciliation_report",
     "build_reconciliation_report_document",
     "decode_reconciliation_report",

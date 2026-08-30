@@ -64,8 +64,10 @@ Integer-only weighted scoring retains every explanation, explicit margins keep
 tied or close candidates ambiguous, and conflict policies prevent two anchors
 from silently claiming the same entry. Deterministic batch workflows now connect
 those stages and produce verified summaries, structured per-candidate evidence,
-and privacy-conscious text reports. The next releases add streaming import
-adapters, durable persistence, and the CLI.
+and privacy-conscious text reports. Input-aware reports join those decisions to
+ordered validation results, covering matched, unmatched, ambiguous, and invalid
+records without retaining rejected values. The next releases add streaming
+import adapters, durable persistence, and the CLI.
 
 ## License
 
