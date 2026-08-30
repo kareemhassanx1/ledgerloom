@@ -206,6 +206,8 @@ def test_reconciler_excludes_every_anchor_from_the_candidate_role(
         DecisionStatus.UNMATCHED,
     )
     assert all(item.reason_code == "decision.no_candidates" for item in batch.decisions)
+    assert tuple(item.excluded_batch_anchors for item in batch.selection_traces) == (1, 1)
+    assert tuple(item.scored_candidates for item in batch.selection_traces) == (0, 0)
 
 
 def test_batch_rejects_an_anchor_selected_as_another_anchors_candidate(make_entry):

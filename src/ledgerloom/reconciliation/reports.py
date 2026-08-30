@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from itertools import pairwise
 
 from ledgerloom.domain.identifiers import BatchId, EntryId
 from ledgerloom.reconciliation.batches import (
+    BatchSelectionTrace,
     ReconciliationBatch,
     ReconciliationPolicySnapshot,
 )
@@ -210,6 +212,74 @@ class CandidateReport:
 
 
 @dataclass(frozen=True, slots=True)
+class SelectionReport:
+    """Privacy-safe candidate counts retained for one anchor selection."""
+
+    indexed: int
+    account: int
+    amount: int
+    time: int
+    reference: int
+    excluded_batch_anchors: int
+    evaluated: int
+
+    def __post_init__(self) -> None:
+        stage_counts = (
+            self.indexed,
+            self.account,
+            self.amount,
+            self.time,
+            self.reference,
+        )
+        for name, value in zip(
+            ("indexed", "account", "amount", "time", "reference"),
+            stage_counts,
+            strict=True,
+        ):
+            _require_count(value, path=f"$.selection.{name}", label=name)
+        if any(left < right for left, right in pairwise(stage_counts)):
+            raise ReconciliationReportError(
+                code="report.selection_order",
+                path="$.selection",
+                message="selection stage counts must not increase after a filter",
+            )
+        _require_count(
+            self.excluded_batch_anchors,
+            path="$.selection.excluded_batch_anchors",
+            label="excluded batch anchors",
+        )
+        _require_count(
+            self.evaluated,
+            path="$.selection.evaluated",
+            label="evaluated candidates",
+        )
+        if self.excluded_batch_anchors + self.evaluated != self.reference:
+            raise ReconciliationReportError(
+                code="report.selection_count_mismatch",
+                path="$.selection",
+                message="excluded and evaluated counts must partition selected candidates",
+            )
+
+    @classmethod
+    def from_batch_trace(cls, trace: BatchSelectionTrace) -> SelectionReport:
+        if not isinstance(trace, BatchSelectionTrace):
+            raise ReconciliationReportError(
+                code="report.selection_trace_type",
+                path="$.selection_trace",
+                message="trace must be a BatchSelectionTrace",
+            )
+        return cls(
+            indexed=trace.index_trace.indexed,
+            account=trace.index_trace.account,
+            amount=trace.index_trace.amount,
+            time=trace.index_trace.time,
+            reference=trace.index_trace.reference,
+            excluded_batch_anchors=trace.excluded_batch_anchors,
+            evaluated=trace.scored_candidates,
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class DecisionReport:
     """Explain one final anchor status and every candidate considered for it."""
 
@@ -220,6 +290,7 @@ class DecisionReport:
     contender_ids: tuple[EntryId, ...]
     competing_anchor_ids: tuple[EntryId, ...]
     candidates: tuple[CandidateReport, ...]
+    selection_report: SelectionReport | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.anchor_id, EntryId):
@@ -297,6 +368,23 @@ class DecisionReport:
                 code="report.candidates_type",
                 path="$.decision.candidates",
                 message="candidates must be a tuple of CandidateReport values",
+            )
+        if self.selection_report is not None and not isinstance(
+            self.selection_report, SelectionReport
+        ):
+            raise ReconciliationReportError(
+                code="report.selection_type",
+                path="$.decision.selection_report",
+                message="selection_report must be a SelectionReport or None",
+            )
+        if (
+            self.selection_report is not None
+            and self.selection_report.evaluated != len(self.candidates)
+        ):
+            raise ReconciliationReportError(
+                code="report.selection_evaluated_mismatch",
+                path="$.decision.selection_report.evaluated",
+                message="evaluated count must match candidate reports",
             )
         candidate_ids = tuple(item.candidate_id for item in self.candidates)
         if len(candidate_ids) != len(set(candidate_ids)):
@@ -382,6 +470,7 @@ class DecisionReport:
         decision: MatchDecision,
         *,
         competing_anchor_ids: tuple[EntryId, ...] = (),
+        selection_report: SelectionReport | None = None,
     ) -> DecisionReport:
         if not isinstance(decision, MatchDecision):
             raise ReconciliationReportError(
@@ -399,6 +488,7 @@ class DecisionReport:
             contender_ids=tuple(item.candidate.entry_id for item in decision.contenders),
             competing_anchor_ids=competing_anchor_ids,
             candidates=tuple(CandidateReport.from_score(item) for item in decision.ranking),
+            selection_report=selection_report,
         )
 
     def candidate(self, candidate_id: EntryId) -> CandidateReport:
@@ -691,6 +781,16 @@ class ReconciliationReport:
                 f"reason={decision.reason_code} selected={selected} "
                 f"contenders={contenders} competitors={competitors}"
             )
+            if decision.selection_report is not None:
+                selection = decision.selection_report
+                lines.append(
+                    "  Selection: "
+                    f"indexed={selection.indexed} account={selection.account} "
+                    f"amount={selection.amount} time={selection.time} "
+                    f"reference={selection.reference} "
+                    f"excluded_anchors={selection.excluded_batch_anchors} "
+                    f"evaluated={selection.evaluated}"
+                )
             lines.extend(
                 f"  {candidate.candidate_id}: score={candidate.score}/{candidate.maximum_score} "
                 f"eligible={str(candidate.required_rules_satisfied).lower()} "
@@ -720,6 +820,7 @@ def build_reconciliation_report(batch: ReconciliationBatch) -> ReconciliationRep
         if candidate_id is not None:
             claims.setdefault(candidate_id, []).append(decision.anchor.entry_id)
 
+    traces = {item.anchor_id: item for item in batch.selection_traces}
     reports: list[DecisionReport] = []
     for decision in batch.decisions:
         candidate_id = None
@@ -737,6 +838,11 @@ def build_reconciliation_report(batch: ReconciliationBatch) -> ReconciliationRep
             DecisionReport.from_decision(
                 decision,
                 competing_anchor_ids=competing_anchor_ids,
+                selection_report=(
+                    None
+                    if decision.anchor.entry_id not in traces
+                    else SelectionReport.from_batch_trace(traces[decision.anchor.entry_id])
+                ),
             )
         )
 

@@ -9,7 +9,7 @@ from decimal import Decimal
 
 from ledgerloom.domain.identifiers import BatchId, EntryId
 from ledgerloom.domain.records import LedgerEntry
-from ledgerloom.reconciliation.candidates import CandidateIndex
+from ledgerloom.reconciliation.candidates import CandidateIndex, CandidateSelectionTrace
 from ledgerloom.reconciliation.decisions import (
     ConflictPolicy,
     ConflictStrategy,
@@ -224,12 +224,62 @@ class ReconciliationPolicySnapshot:
 
 
 @dataclass(frozen=True, slots=True)
+class BatchSelectionTrace:
+    """Selection counts for one anchor, including batch-role exclusions."""
+
+    anchor_id: EntryId
+    index_trace: CandidateSelectionTrace
+    excluded_batch_anchors: int
+    scored_candidates: int
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.anchor_id, EntryId):
+            raise ReconciliationBatchError(
+                code="batch.trace_anchor_type",
+                path="$.selection_trace.anchor_id",
+                message="anchor_id must be an EntryId",
+            )
+        if not isinstance(self.index_trace, CandidateSelectionTrace):
+            raise ReconciliationBatchError(
+                code="batch.trace_index_type",
+                path="$.selection_trace.index_trace",
+                message="index_trace must be a CandidateSelectionTrace",
+            )
+        for name, value in (
+            ("excluded_batch_anchors", self.excluded_batch_anchors),
+            ("scored_candidates", self.scored_candidates),
+        ):
+            if isinstance(value, bool) or not isinstance(value, int):
+                raise ReconciliationBatchError(
+                    code="batch.trace_count_type",
+                    path=f"$.selection_trace.{name}",
+                    message=f"{name} must be an integer",
+                )
+            if value < 0:
+                raise ReconciliationBatchError(
+                    code="batch.trace_count_range",
+                    path=f"$.selection_trace.{name}",
+                    message=f"{name} must not be negative",
+                )
+        if (
+            self.excluded_batch_anchors + self.scored_candidates
+            != self.index_trace.selected
+        ):
+            raise ReconciliationBatchError(
+                code="batch.trace_count_mismatch",
+                path="$.selection_trace",
+                message="excluded and scored counts must partition selected candidates",
+            )
+
+
+@dataclass(frozen=True, slots=True)
 class ReconciliationBatch:
     """One immutable, conflict-resolved set of per-anchor decisions."""
 
     batch_id: BatchId
     decisions: tuple[MatchDecision, ...]
     policy_snapshot: ReconciliationPolicySnapshot | None = None
+    selection_traces: tuple[BatchSelectionTrace, ...] = ()
 
     def __post_init__(self) -> None:
         if not isinstance(self.batch_id, BatchId):
@@ -264,6 +314,14 @@ class ReconciliationBatch:
                 path="$.batch.policy_snapshot",
                 message="policy_snapshot must be a ReconciliationPolicySnapshot or None",
             )
+        if not isinstance(self.selection_traces, tuple) or not all(
+            isinstance(item, BatchSelectionTrace) for item in self.selection_traces
+        ):
+            raise ReconciliationBatchError(
+                code="batch.selection_traces_type",
+                path="$.batch.selection_traces",
+                message="selection_traces must be a tuple of BatchSelectionTrace values",
+            )
         ordered = tuple(sorted(self.decisions, key=_decision_order))
         object.__setattr__(self, "decisions", ordered)
         anchor_ids = tuple(item.anchor.entry_id for item in ordered)
@@ -273,6 +331,21 @@ class ReconciliationBatch:
                 path="$.batch.decisions",
                 message="anchor identifiers must be unique within a batch",
             )
+        if self.selection_traces:
+            trace_anchor_ids = tuple(item.anchor_id for item in self.selection_traces)
+            if trace_anchor_ids != anchor_ids:
+                raise ReconciliationBatchError(
+                    code="batch.selection_trace_order",
+                    path="$.batch.selection_traces",
+                    message="selection traces must match decision anchors in batch order",
+                )
+            for decision, trace in zip(ordered, self.selection_traces, strict=True):
+                if trace.scored_candidates != len(decision.ranking):
+                    raise ReconciliationBatchError(
+                        code="batch.selection_trace_ranking_mismatch",
+                        path="$.batch.selection_traces.scored_candidates",
+                        message="scored candidate count must match the decision ranking",
+                    )
         selected_ids = tuple(
             item.selection.candidate.entry_id
             for item in ordered
@@ -472,18 +545,33 @@ class BatchReconciler:
             )
 
         decisions: list[MatchDecision] = []
+        selection_traces: list[BatchSelectionTrace] = []
         for anchor in sorted(materialized, key=_entry_order):
+            selection = candidate_index.select_for(
+                anchor,
+                max_time_difference=self.selection_policy.max_time_difference,
+                max_amount_difference=self.selection_policy.max_amount_difference,
+                require_reference=self.selection_policy.require_reference,
+            )
             candidates = tuple(
                 candidate
-                for candidate in candidate_index.candidates_for(
-                    anchor,
-                    max_time_difference=self.selection_policy.max_time_difference,
-                    max_amount_difference=self.selection_policy.max_amount_difference,
-                    require_reference=self.selection_policy.require_reference,
-                )
+                for candidate in selection.candidates
                 if candidate.entry_id not in anchor_ids
+            )
+            selection_traces.append(
+                BatchSelectionTrace(
+                    anchor.entry_id,
+                    selection.trace,
+                    excluded_batch_anchors=len(selection.candidates) - len(candidates),
+                    scored_candidates=len(candidates),
+                )
             )
             ranking = self.scorer.rank(anchor, candidates)
             decisions.append(self.decision_policy.decide(anchor, ranking))
         resolved = self.conflict_policy.resolve(decisions)
-        return ReconciliationBatch(batch_id, resolved, self.policy_snapshot)
+        return ReconciliationBatch(
+            batch_id,
+            resolved,
+            self.policy_snapshot,
+            tuple(selection_traces),
+        )

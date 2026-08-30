@@ -2,6 +2,7 @@
 
 from ledgerloom.reconciliation.batches import (
     BatchReconciler,
+    BatchSelectionTrace,
     CandidateSelectionPolicy,
     ReconciliationBatch,
     ReconciliationPolicySnapshot,
@@ -33,6 +34,7 @@ from ledgerloom.reconciliation.reports import (
     ReasonCount,
     ReconciliationReport,
     ReconciliationSummary,
+    SelectionReport,
     build_reconciliation_report,
 )
 from ledgerloom.reconciliation.scoring import (
@@ -49,6 +51,7 @@ __all__ = [
     "MAX_RULE_WEIGHT",
     "MAX_TOTAL_SCORE",
     "BatchReconciler",
+    "BatchSelectionTrace",
     "CandidateIndex",
     "CandidateIndexError",
     "CandidateReport",
@@ -75,5 +78,6 @@ __all__ = [
     "ScoringError",
     "ScoringRule",
     "ScoringRuleSnapshot",
+    "SelectionReport",
     "build_reconciliation_report",
 ]

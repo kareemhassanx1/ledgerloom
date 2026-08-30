@@ -38,6 +38,8 @@ def test_report_summarizes_every_batch_outcome(mixed_batch):
         ReasonCount("decision.unique_leader", 1),
     )
     assert report.policy_snapshot == mixed_batch.policy_snapshot
+    assert all(item.selection_report is not None for item in report.decisions)
+    assert report.decision_for(EntryId("anchor-match")).selection_report.evaluated == 1
 
 
 def test_report_filters_final_status_and_reason_without_reordering(mixed_batch):
@@ -162,6 +164,7 @@ def test_text_render_is_deterministic_and_exposes_no_reference_values(mixed_batc
         "selected=candidate-match contenders=candidate-match competitors=none"
     ) in first
     assert "invoice-match" not in first
+    assert "Selection: indexed=" in first
 
 
 def test_report_build_does_not_change_or_recompute_batch(mixed_batch):
