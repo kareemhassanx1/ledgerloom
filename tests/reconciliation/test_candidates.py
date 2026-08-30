@@ -7,7 +7,11 @@ from ledgerloom.domain.identifiers import AccountId, EntryId, SourceId, SourceRe
 from ledgerloom.domain.money import Money
 from ledgerloom.domain.records import LedgerEntry
 from ledgerloom.domain.time import UtcTimestamp
-from ledgerloom.reconciliation import CandidateIndex, CandidateIndexError
+from ledgerloom.reconciliation import (
+    CandidateIndex,
+    CandidateIndexError,
+    CandidateSelectionTrace,
+)
 
 
 def entry(
@@ -32,6 +36,44 @@ def entry(
 
 def ids(entries):
     return tuple(str(item.entry_id) for item in entries)
+
+
+def test_selection_trace_explains_each_narrowing_stage():
+    anchor = entry("anchor")
+    index = CandidateIndex(
+        (
+            anchor,
+            entry("selected", occurred_at="2026-08-28T12:00:30Z"),
+            entry("other-reference", reference="invoice-99"),
+            entry("outside-time", occurred_at="2026-08-28T13:00:00Z"),
+            entry("outside-amount", amount="11"),
+            entry("other-account", account="liabilities:card"),
+        )
+    )
+
+    selection = index.select_for(
+        anchor,
+        max_time_difference=timedelta(minutes=1),
+        require_reference=True,
+    )
+
+    assert ids(selection.candidates) == ("selected",)
+    assert selection.trace == CandidateSelectionTrace(6, 4, 3, 2, 1, 1)
+
+
+def test_existing_candidate_lookup_delegates_to_traced_selection():
+    anchor = entry("anchor")
+    candidate = entry("candidate")
+    index = CandidateIndex((candidate, anchor))
+    options = {
+        "max_time_difference": timedelta(0),
+        "max_amount_difference": Decimal("0"),
+        "require_reference": True,
+    }
+
+    assert index.candidates_for(anchor, **options) == index.select_for(
+        anchor, **options
+    ).candidates
 
 
 def test_indexes_account_amount_and_present_reference():

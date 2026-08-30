@@ -7,6 +7,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal, localcontext
+from itertools import pairwise
 from types import MappingProxyType
 
 from ledgerloom.domain.identifiers import AccountId, EntryId
@@ -72,6 +73,83 @@ def _require_amount_tolerance(value: object, *, path: str) -> Decimal:
             message="amount tolerance exceeds the supported decimal precision",
         )
     return value
+
+
+@dataclass(frozen=True, slots=True)
+class CandidateSelectionTrace:
+    """Privacy-safe counts retained after each deterministic selection stage."""
+
+    indexed: int
+    account: int
+    amount: int
+    time: int
+    reference: int
+    selected: int
+
+    def __post_init__(self) -> None:
+        values = (
+            self.indexed,
+            self.account,
+            self.amount,
+            self.time,
+            self.reference,
+            self.selected,
+        )
+        if any(isinstance(value, bool) or not isinstance(value, int) for value in values):
+            raise CandidateIndexError(
+                code="candidate.trace_count_type",
+                path="$.selection_trace",
+                message="selection trace counts must be integers",
+            )
+        if any(value < 0 for value in values):
+            raise CandidateIndexError(
+                code="candidate.trace_count_range",
+                path="$.selection_trace",
+                message="selection trace counts must not be negative",
+            )
+        if any(left < right for left, right in pairwise(values)):
+            raise CandidateIndexError(
+                code="candidate.trace_order",
+                path="$.selection_trace",
+                message="selection trace counts must not increase after a filter",
+            )
+
+
+@dataclass(frozen=True, slots=True)
+class CandidateSelection:
+    """Selected entries and the counts that explain how they were narrowed."""
+
+    candidates: tuple[LedgerEntry, ...]
+    trace: CandidateSelectionTrace
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.candidates, tuple) or not all(
+            isinstance(item, LedgerEntry) for item in self.candidates
+        ):
+            raise CandidateIndexError(
+                code="candidate.selection_type",
+                path="$.selection.candidates",
+                message="candidates must be a tuple of LedgerEntry values",
+            )
+        candidate_ids = tuple(item.entry_id for item in self.candidates)
+        if len(candidate_ids) != len(set(candidate_ids)):
+            raise CandidateIndexError(
+                code="candidate.selection_duplicate",
+                path="$.selection.candidates",
+                message="selected candidate identifiers must be unique",
+            )
+        if not isinstance(self.trace, CandidateSelectionTrace):
+            raise CandidateIndexError(
+                code="candidate.selection_trace_type",
+                path="$.selection.trace",
+                message="trace must be a CandidateSelectionTrace",
+            )
+        if self.trace.selected != len(self.candidates):
+            raise CandidateIndexError(
+                code="candidate.selection_count_mismatch",
+                path="$.selection.trace.selected",
+                message="selected count must match the candidate tuple",
+            )
 
 
 @dataclass(frozen=True, slots=True, init=False)
@@ -261,6 +339,23 @@ class CandidateIndex:
         reference yields no candidates and present references must match exactly.
         """
 
+        return self.select_for(
+            entry,
+            max_time_difference=max_time_difference,
+            max_amount_difference=max_amount_difference,
+            require_reference=require_reference,
+        ).candidates
+
+    def select_for(
+        self,
+        entry: LedgerEntry,
+        *,
+        max_time_difference: timedelta,
+        max_amount_difference: Decimal = Decimal("0"),
+        require_reference: bool = False,
+    ) -> CandidateSelection:
+        """Select candidates while retaining privacy-safe filter-stage counts."""
+
         if not isinstance(entry, LedgerEntry):
             raise CandidateIndexError(
                 code="candidate.entry_type",
@@ -275,19 +370,35 @@ class CandidateIndex:
             )
 
         candidate_ids = {item.entry_id for item in self.by_account(entry.account_id)}
+        candidate_ids.discard(entry.entry_id)
+        account_count = len(candidate_ids)
         candidate_ids.intersection_update(
             item.entry_id
             for item in self.within_amount_tolerance(entry.amount, max_amount_difference)
         )
+        amount_count = len(candidate_ids)
         candidate_ids.intersection_update(
             item.entry_id
             for item in self.within_time_window(entry.occurred_at, max_time_difference)
         )
+        time_count = len(candidate_ids)
         if require_reference:
             if entry.reference is None:
-                return ()
-            candidate_ids.intersection_update(
-                item.entry_id for item in self.by_reference(entry.reference)
-            )
-        candidate_ids.discard(entry.entry_id)
-        return tuple(item for item in self._entries if item.entry_id in candidate_ids)
+                candidate_ids.clear()
+            else:
+                candidate_ids.intersection_update(
+                    item.entry_id for item in self.by_reference(entry.reference)
+                )
+        reference_count = len(candidate_ids)
+        candidates = tuple(item for item in self._entries if item.entry_id in candidate_ids)
+        return CandidateSelection(
+            candidates,
+            CandidateSelectionTrace(
+                indexed=len(self),
+                account=account_count,
+                amount=amount_count,
+                time=time_count,
+                reference=reference_count,
+                selected=len(candidates),
+            ),
+        )

@@ -7,7 +7,11 @@ from ledgerloom.reconciliation.batches import (
     ReconciliationPolicySnapshot,
     ScoringRuleSnapshot,
 )
-from ledgerloom.reconciliation.candidates import CandidateIndex
+from ledgerloom.reconciliation.candidates import (
+    CandidateIndex,
+    CandidateSelection,
+    CandidateSelectionTrace,
+)
 from ledgerloom.reconciliation.decisions import (
     ConflictPolicy,
     ConflictStrategy,
@@ -49,7 +53,9 @@ __all__ = [
     "CandidateIndexError",
     "CandidateReport",
     "CandidateScore",
+    "CandidateSelection",
     "CandidateSelectionPolicy",
+    "CandidateSelectionTrace",
     "ConflictPolicy",
     "ConflictStrategy",
     "DecisionError",
