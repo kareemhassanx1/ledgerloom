@@ -139,6 +139,12 @@ class ReconciliationBatch:
                 path="$.batch.decisions",
                 message="matched decisions must not reuse a candidate entry",
             )
+        if set(anchor_ids).intersection(selected_ids):
+            raise ReconciliationBatchError(
+                code="batch.entry_role_overlap",
+                path="$.batch.decisions",
+                message="one entry must not be both an anchor and a selected candidate",
+            )
 
     def decision_for(self, anchor_id: EntryId) -> MatchDecision:
         """Return one anchor decision, raising ``KeyError`` when absent."""
@@ -249,11 +255,15 @@ class BatchReconciler:
 
         decisions: list[MatchDecision] = []
         for anchor in sorted(materialized, key=_entry_order):
-            candidates = candidate_index.candidates_for(
-                anchor,
-                max_time_difference=self.selection_policy.max_time_difference,
-                max_amount_difference=self.selection_policy.max_amount_difference,
-                require_reference=self.selection_policy.require_reference,
+            candidates = tuple(
+                candidate
+                for candidate in candidate_index.candidates_for(
+                    anchor,
+                    max_time_difference=self.selection_policy.max_time_difference,
+                    max_amount_difference=self.selection_policy.max_amount_difference,
+                    require_reference=self.selection_policy.require_reference,
+                )
+                if candidate.entry_id not in anchor_ids
             )
             ranking = self.scorer.rank(anchor, candidates)
             decisions.append(self.decision_policy.decide(anchor, ranking))

@@ -19,12 +19,17 @@ immutable and contains the evidence needed to explain every final status.
 The workflow accepts a typed `BatchId`, one or more unique anchor entries, and
 one candidate-index snapshot. Anchor input order does not affect output: the
 batch orders decisions by anchor occurrence instant and then entry identifier.
-Candidate ordering is already deterministic within the index and scorer.
+Candidate ordering is already deterministic within the index and scorer. Every
+anchor identifier is removed from candidate results before scoring, even when
+the candidate index contains the anchor set, so an entry cannot occupy both
+roles in one batch.
 
 The result is a `ReconciliationBatch`. It rejects duplicate anchors and any
 remaining duplicate selected candidate, so constructing a successful batch can
-never bypass conflict resolution. `decision_for()` performs typed anchor lookup,
-and `matched_pairs` exposes conflict-free identifier pairs in batch order.
+never bypass conflict resolution. It also rejects a selected candidate whose
+identifier belongs to any batch anchor as a defensive invariant.
+`decision_for()` performs typed anchor lookup, and `matched_pairs` exposes
+conflict-free identifier pairs in batch order.
 
 ## Structured report
 

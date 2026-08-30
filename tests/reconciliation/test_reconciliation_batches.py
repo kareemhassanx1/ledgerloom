@@ -172,6 +172,42 @@ def test_batch_rejects_unresolved_candidate_reuse(make_entry):
     assert captured.value.code == "batch.unresolved_conflict"
 
 
+def test_reconciler_excludes_every_anchor_from_the_candidate_role(
+    make_entry,
+    batch_reconciler,
+):
+    first = make_entry("entry-first", reference="shared-reference")
+    second = make_entry("entry-second", reference="shared-reference")
+
+    batch = batch_reconciler.reconcile(
+        BatchId("batch-role-partition"),
+        (second, first),
+        CandidateIndex((first, second)),
+    )
+
+    assert tuple(item.status for item in batch.decisions) == (
+        DecisionStatus.UNMATCHED,
+        DecisionStatus.UNMATCHED,
+    )
+    assert all(item.reason_code == "decision.no_candidates" for item in batch.decisions)
+
+
+def test_batch_rejects_an_anchor_selected_as_another_anchors_candidate(make_entry):
+    scorer = MatchScorer((ScoringRule(SameAccountRule(), 10),))
+    policy = DecisionPolicy(0)
+    first = make_entry("entry-first")
+    second = make_entry("entry-second")
+    decisions = (
+        policy.decide(first, scorer.rank(first, (second,))),
+        policy.decide(second, ()),
+    )
+
+    with pytest.raises(ReconciliationBatchError) as captured:
+        ReconciliationBatch(BatchId("batch-role-overlap"), decisions)
+
+    assert captured.value.code == "batch.entry_role_overlap"
+
+
 def test_batch_sorts_decisions_and_looks_them_up_by_typed_id(make_entry):
     policy = DecisionPolicy(0)
     later = make_entry("anchor-later", occurred_at="2026-08-30T11:00:00Z")
