@@ -93,6 +93,7 @@ class CandidateScore:
     score: int
     maximum_score: int
     evidence: tuple[RuleEvidence, ...]
+    required_rule_ids: tuple[str, ...]
     required_rules_satisfied: bool
     reason_code: str
 
@@ -150,17 +151,67 @@ class CandidateScore:
                 path="$.candidate_score.evidence",
                 message="evidence rule identifiers must be unique",
             )
+        if not isinstance(self.required_rule_ids, tuple) or not all(
+            isinstance(item, str) for item in self.required_rule_ids
+        ):
+            raise ScoringError(
+                code="score.required_rule_ids_type",
+                path="$.candidate_score.required_rule_ids",
+                message="required_rule_ids must be a tuple of strings",
+            )
+        if len(self.required_rule_ids) != len(set(self.required_rule_ids)):
+            raise ScoringError(
+                code="score.required_rule_id_duplicate",
+                path="$.candidate_score.required_rule_ids",
+                message="required rule identifiers must be unique",
+            )
+        if any(item not in rule_ids for item in self.required_rule_ids):
+            raise ScoringError(
+                code="score.required_rule_unknown",
+                path="$.candidate_score.required_rule_ids",
+                message="every required rule must occur in evidence",
+            )
+        expected_required_ids = tuple(
+            item for item in rule_ids if item in self.required_rule_ids
+        )
+        if self.required_rule_ids != expected_required_ids:
+            raise ScoringError(
+                code="score.required_rule_order",
+                path="$.candidate_score.required_rule_ids",
+                message="required rule identifiers must preserve evidence order",
+            )
         if not isinstance(self.required_rules_satisfied, bool):
             raise ScoringError(
                 code="score.required_status_type",
                 path="$.candidate_score.required_rules_satisfied",
                 message="required rule status must be a boolean",
             )
+        rejected = self.rejected_required_rule_ids
+        indeterminate = self.indeterminate_required_rule_ids
+        expected_status = not rejected and not indeterminate
+        if self.required_rules_satisfied is not expected_status:
+            raise ScoringError(
+                code="score.required_status_mismatch",
+                path="$.candidate_score.required_rules_satisfied",
+                message="required rule status does not match evidence",
+            )
         validate_rule_code(
             self.reason_code,
             path="$.candidate_score.reason_code",
             kind="reason_code",
         )
+        if rejected:
+            expected_reason = "score.required_rule_rejected"
+        elif indeterminate:
+            expected_reason = "score.required_rule_indeterminate"
+        else:
+            expected_reason = "score.rules_evaluated"
+        if self.reason_code != expected_reason:
+            raise ScoringError(
+                code="score.reason_mismatch",
+                path="$.candidate_score.reason_code",
+                message="score reason does not match required rule evidence",
+            )
 
     @property
     def confidence_basis_points(self) -> int:
@@ -172,6 +223,24 @@ class CandidateScore:
     def matched_rule_ids(self) -> tuple[str, ...]:
         return tuple(
             item.rule_id for item in self.evidence if item.verdict is MatchVerdict.MATCH
+        )
+
+    @property
+    def rejected_required_rule_ids(self) -> tuple[str, ...]:
+        return tuple(
+            item.rule_id
+            for item in self.evidence
+            if item.rule_id in self.required_rule_ids
+            and item.verdict is MatchVerdict.NO_MATCH
+        )
+
+    @property
+    def indeterminate_required_rule_ids(self) -> tuple[str, ...]:
+        return tuple(
+            item.rule_id
+            for item in self.evidence
+            if item.rule_id in self.required_rule_ids
+            and item.verdict is MatchVerdict.INDETERMINATE
         )
 
 
@@ -259,6 +328,7 @@ class MatchScorer:
             for config, item in zip(self._rules, evidence, strict=True)
             if config.required
         )
+        required_rule_ids = tuple(config.rule_id for config in self._rules if config.required)
         if any(item.verdict is MatchVerdict.NO_MATCH for item in required_evidence):
             required_rules_satisfied = False
             reason_code = "score.required_rule_rejected"
@@ -274,6 +344,7 @@ class MatchScorer:
             score,
             self._maximum_score,
             evidence,
+            required_rule_ids,
             required_rules_satisfied,
             reason_code,
         )

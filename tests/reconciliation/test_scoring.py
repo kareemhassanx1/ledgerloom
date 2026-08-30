@@ -1,4 +1,4 @@
-from dataclasses import FrozenInstanceError
+from dataclasses import FrozenInstanceError, replace
 from decimal import Decimal
 
 import pytest
@@ -39,6 +39,9 @@ def test_exact_candidate_earns_every_integer_weight(make_entry):
     assert result.maximum_score == 100
     assert result.confidence_basis_points == 10_000
     assert result.required_rules_satisfied
+    assert result.required_rule_ids == ("ledgerloom.same_account",)
+    assert result.rejected_required_rule_ids == ()
+    assert result.indeterminate_required_rule_ids == ()
     assert result.reason_code == "score.rules_evaluated"
     assert result.matched_rule_ids == (
         "ledgerloom.same_account",
@@ -81,6 +84,7 @@ def test_required_rejection_disqualifies_even_a_high_scoring_candidate(make_entr
     assert result.score == 80
     assert not result.required_rules_satisfied
     assert result.reason_code == "score.required_rule_rejected"
+    assert result.rejected_required_rule_ids == ("ledgerloom.same_account",)
 
 
 def test_required_indeterminate_has_a_distinct_reason(make_entry):
@@ -94,6 +98,8 @@ def test_required_indeterminate_has_a_distinct_reason(make_entry):
     assert result.score == 0
     assert not result.required_rules_satisfied
     assert result.reason_code == "score.required_rule_indeterminate"
+    assert result.required_rule_ids == ("ledgerloom.reference",)
+    assert result.indeterminate_required_rule_ids == ("ledgerloom.reference",)
 
 
 def test_all_rules_are_evaluated_and_preserve_configuration_order(make_entry):
@@ -179,11 +185,27 @@ def test_basis_points_use_exact_floor_rounding(make_entry):
         1,
         3,
         (evidence,),
+        (),
         True,
         "score.rules_evaluated",
     )
 
     assert result.confidence_basis_points == 3_333
+
+
+def test_score_rejects_required_metadata_inconsistent_with_evidence(make_entry):
+    result = scorer().score(make_entry("anchor"), make_entry("candidate"))
+
+    with pytest.raises(ScoringError) as unknown:
+        replace(result, required_rule_ids=("unknown.rule",))
+    with pytest.raises(ScoringError) as status:
+        replace(result, required_rules_satisfied=False)
+    with pytest.raises(ScoringError) as reason:
+        replace(result, reason_code="score.required_rule_rejected")
+
+    assert unknown.value.code == "score.required_rule_unknown"
+    assert status.value.code == "score.required_status_mismatch"
+    assert reason.value.code == "score.reason_mismatch"
 
 
 @pytest.mark.parametrize("weight", [True, 0, -1, 1.5, MAX_RULE_WEIGHT + 1])

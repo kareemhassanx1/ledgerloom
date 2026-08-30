@@ -60,6 +60,9 @@ def test_candidate_report_preserves_structured_rule_explanations(mixed_batch):
     assert candidate.maximum_score == 100
     assert candidate.confidence_basis_points == 10_000
     assert candidate.required_rules_satisfied
+    assert candidate.required_rule_ids == ("ledgerloom.same_account",)
+    assert candidate.rejected_required_rule_ids == ()
+    assert candidate.indeterminate_required_rule_ids == ()
     assert tuple(item.rule_id for item in candidate.evidence) == (
         "ledgerloom.same_account",
         "ledgerloom.amount",
@@ -127,6 +130,15 @@ def test_candidate_report_rejects_inconsistent_confidence(mixed_batch):
         replace(candidate, confidence_basis_points=9_999)
 
     assert captured.value.code == "report.confidence_mismatch"
+
+
+def test_candidate_report_rejects_unknown_required_rule(mixed_batch):
+    candidate = build_reconciliation_report(mixed_batch).decisions[0].candidates[0]
+
+    with pytest.raises(ReconciliationReportError) as captured:
+        replace(candidate, required_rule_ids=("unknown.rule",))
+
+    assert captured.value.code == "report.required_rule_unknown"
 
 
 def test_decision_report_rejects_selection_outside_candidates(mixed_batch):

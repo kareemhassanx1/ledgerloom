@@ -53,6 +53,7 @@ anchors, and rejects reuse of a selected candidate.
 Each `DecisionReport` records the final status, stable reason, selected candidate
 when matched, ordered contenders, and every ranked `CandidateReport`. Candidate
 reports preserve integer score, maximum score, exact basis-point confidence,
+required-rule identifiers and their failed or indeterminate subsets,
 required-rule status, score reason, and rule evidence. The `reason_codes`
 properties flatten nested explanations in deterministic order without silently
 dropping a failed or indeterminate rule.

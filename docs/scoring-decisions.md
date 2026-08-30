@@ -24,6 +24,7 @@ another decision. It exposes:
 - the earned and maximum integer score;
 - confidence as floor-rounded basis points from 0 through 10,000;
 - all per-rule evidence in configuration order;
+- required rule identifiers plus the rejected or indeterminate required subset;
 - matched rule identifiers; and
 - the required-rule status and stable reason code.
 
@@ -45,7 +46,9 @@ ordering never silently chooses between equal evidence.
 
 Candidate scores in one decision must belong to the requested anchor and use
 the same maximum score. This prevents comparisons across different rule-weight
-scales.
+scales. Score construction also recomputes required-rule status and its reason
+from the named required rules and evidence, rejecting metadata that claims a
+different outcome.
 
 ## Cross-anchor conflicts
 

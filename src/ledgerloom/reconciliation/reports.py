@@ -9,7 +9,7 @@ from ledgerloom.reconciliation.batches import ReconciliationBatch
 from ledgerloom.reconciliation.decisions import DecisionStatus, MatchDecision
 from ledgerloom.reconciliation.errors import ReconciliationReportError
 from ledgerloom.reconciliation.scoring import BASIS_POINT_SCALE, MAX_TOTAL_SCORE, CandidateScore
-from ledgerloom.rules import RuleEvidence
+from ledgerloom.rules import MatchVerdict, RuleEvidence
 from ledgerloom.rules.evidence import validate_rule_code
 
 
@@ -37,6 +37,7 @@ class CandidateReport:
     score: int
     maximum_score: int
     confidence_basis_points: int
+    required_rule_ids: tuple[str, ...]
     required_rules_satisfied: bool
     reason_code: str
     evidence: tuple[RuleEvidence, ...]
@@ -104,6 +105,56 @@ class CandidateReport:
                 path="$.candidate.evidence",
                 message="evidence rule identifiers must be unique",
             )
+        if not isinstance(self.required_rule_ids, tuple) or not all(
+            isinstance(item, str) for item in self.required_rule_ids
+        ):
+            raise ReconciliationReportError(
+                code="report.required_rule_ids_type",
+                path="$.candidate.required_rule_ids",
+                message="required_rule_ids must be a tuple of strings",
+            )
+        if len(self.required_rule_ids) != len(set(self.required_rule_ids)):
+            raise ReconciliationReportError(
+                code="report.required_rule_id_duplicate",
+                path="$.candidate.required_rule_ids",
+                message="required rule identifiers must be unique",
+            )
+        if any(item not in rule_ids for item in self.required_rule_ids):
+            raise ReconciliationReportError(
+                code="report.required_rule_unknown",
+                path="$.candidate.required_rule_ids",
+                message="every required rule must occur in evidence",
+            )
+        expected_required_ids = tuple(
+            item for item in rule_ids if item in self.required_rule_ids
+        )
+        if self.required_rule_ids != expected_required_ids:
+            raise ReconciliationReportError(
+                code="report.required_rule_order",
+                path="$.candidate.required_rule_ids",
+                message="required rule identifiers must preserve evidence order",
+            )
+        expected_status = not (
+            self.rejected_required_rule_ids or self.indeterminate_required_rule_ids
+        )
+        if self.required_rules_satisfied is not expected_status:
+            raise ReconciliationReportError(
+                code="report.required_status_mismatch",
+                path="$.candidate.required_rules_satisfied",
+                message="required rule status does not match evidence",
+            )
+        if self.rejected_required_rule_ids:
+            expected_reason = "score.required_rule_rejected"
+        elif self.indeterminate_required_rule_ids:
+            expected_reason = "score.required_rule_indeterminate"
+        else:
+            expected_reason = "score.rules_evaluated"
+        if self.reason_code != expected_reason:
+            raise ReconciliationReportError(
+                code="report.score_reason_mismatch",
+                path="$.candidate.reason_code",
+                message="score reason does not match required rule evidence",
+            )
 
     @classmethod
     def from_score(cls, score: CandidateScore) -> CandidateReport:
@@ -118,9 +169,28 @@ class CandidateReport:
             score.score,
             score.maximum_score,
             score.confidence_basis_points,
+            score.required_rule_ids,
             score.required_rules_satisfied,
             score.reason_code,
             score.evidence,
+        )
+
+    @property
+    def rejected_required_rule_ids(self) -> tuple[str, ...]:
+        return tuple(
+            item.rule_id
+            for item in self.evidence
+            if item.rule_id in self.required_rule_ids
+            and item.verdict is MatchVerdict.NO_MATCH
+        )
+
+    @property
+    def indeterminate_required_rule_ids(self) -> tuple[str, ...]:
+        return tuple(
+            item.rule_id
+            for item in self.evidence
+            if item.rule_id in self.required_rule_ids
+            and item.verdict is MatchVerdict.INDETERMINATE
         )
 
     @property
