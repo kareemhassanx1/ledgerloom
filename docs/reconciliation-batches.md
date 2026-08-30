@@ -54,6 +54,12 @@ floor-rounded matched share on a 0 through 10,000 scale. Report construction
 rechecks these aggregates against the decision reports, rejects duplicate
 anchors, and rejects reuse of a selected candidate.
 
+`decision_reason_counts` groups final decision reasons into lexically ordered
+`ReasonCount` values. `decisions_with_status()` and `decisions_with_reason()`
+return matching items without changing batch order. These structured queries
+let operational code distinguish candidate scarcity, ambiguity, and conflicts
+without parsing rendered text.
+
 Each `DecisionReport` records the final status, stable reason, selected candidate
 when matched, ordered contenders, competing anchor identifiers, and every ranked
 `CandidateReport`. A rejected conflict names its peers; when score preference

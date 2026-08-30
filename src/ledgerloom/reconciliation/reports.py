@@ -483,6 +483,28 @@ class ReconciliationSummary:
         )
 
 
+@dataclass(frozen=True, slots=True, order=True)
+class ReasonCount:
+    """Count one stable final decision reason within a report."""
+
+    reason_code: str
+    count: int
+
+    def __post_init__(self) -> None:
+        validate_rule_code(
+            self.reason_code,
+            path="$.reason_count.reason_code",
+            kind="reason_code",
+        )
+        _require_count(self.count, path="$.reason_count.count", label="reason count")
+        if self.count < 1:
+            raise ReconciliationReportError(
+                code="report.reason_count_empty",
+                path="$.reason_count.count",
+                message="reason count must be at least one",
+            )
+
+
 @dataclass(frozen=True, slots=True)
 class ReconciliationReport:
     """A stable summary and ordered explanation snapshot for one batch."""
@@ -564,6 +586,46 @@ class ReconciliationReport:
             if decision.anchor_id == anchor_id:
                 return decision
         raise KeyError(anchor_id)
+
+    def decisions_with_status(
+        self,
+        status: DecisionStatus,
+    ) -> tuple[DecisionReport, ...]:
+        """Select decisions with one typed final status in report order."""
+
+        if not isinstance(status, DecisionStatus):
+            raise ReconciliationReportError(
+                code="report.status_filter_type",
+                path="$.status",
+                message="status must be a DecisionStatus",
+            )
+        return tuple(item for item in self.decisions if item.status is status)
+
+    def decisions_with_reason(self, reason_code: str) -> tuple[DecisionReport, ...]:
+        """Select decisions with one exact final reason in report order."""
+
+        try:
+            validate_rule_code(
+                reason_code,
+                path="$.reason_code",
+                kind="reason_code",
+            )
+        except (TypeError, ValueError) as error:
+            raise ReconciliationReportError(
+                code="report.reason_filter_format",
+                path="$.reason_code",
+                message="reason_code must be a dotted lowercase identifier",
+            ) from error
+        return tuple(item for item in self.decisions if item.reason_code == reason_code)
+
+    @property
+    def decision_reason_counts(self) -> tuple[ReasonCount, ...]:
+        """Count final reasons and order them lexically for stable aggregation."""
+
+        counts: dict[str, int] = {}
+        for decision in self.decisions:
+            counts[decision.reason_code] = counts.get(decision.reason_code, 0) + 1
+        return tuple(ReasonCount(code, counts[code]) for code in sorted(counts))
 
     @property
     def matched_pairs(self) -> tuple[tuple[EntryId, EntryId], ...]:

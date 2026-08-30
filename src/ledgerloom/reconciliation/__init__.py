@@ -24,6 +24,7 @@ from ledgerloom.reconciliation.errors import (
 from ledgerloom.reconciliation.reports import (
     CandidateReport,
     DecisionReport,
+    ReasonCount,
     ReconciliationReport,
     ReconciliationSummary,
     build_reconciliation_report,
@@ -55,6 +56,7 @@ __all__ = [
     "DecisionStatus",
     "MatchDecision",
     "MatchScorer",
+    "ReasonCount",
     "ReconciliationBatch",
     "ReconciliationBatchError",
     "ReconciliationError",

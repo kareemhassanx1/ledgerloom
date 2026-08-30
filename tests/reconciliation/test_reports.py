@@ -7,6 +7,7 @@ from ledgerloom.reconciliation import (
     CandidateReport,
     DecisionReport,
     DecisionStatus,
+    ReasonCount,
     ReconciliationReport,
     ReconciliationReportError,
     ReconciliationSummary,
@@ -30,6 +31,37 @@ def test_report_summarizes_every_batch_outcome(mixed_batch):
     assert report.matched_pairs == (
         (EntryId("anchor-match"), EntryId("candidate-match")),
     )
+    assert report.decision_reason_counts == (
+        ReasonCount("conflict.shared_candidate", 2),
+        ReasonCount("decision.insufficient_margin", 1),
+        ReasonCount("decision.no_candidates", 1),
+        ReasonCount("decision.unique_leader", 1),
+    )
+
+
+def test_report_filters_final_status_and_reason_without_reordering(mixed_batch):
+    report = build_reconciliation_report(mixed_batch)
+
+    conflicts = report.decisions_with_status(DecisionStatus.CONFLICT)
+    missing = report.decisions_with_reason("decision.no_candidates")
+
+    assert tuple(item.anchor_id for item in conflicts) == (
+        EntryId("anchor-conflict-a"),
+        EntryId("anchor-conflict-b"),
+    )
+    assert tuple(item.anchor_id for item in missing) == (EntryId("anchor-unmatched"),)
+
+
+def test_report_filters_reject_untyped_status_and_invalid_reason(mixed_batch):
+    report = build_reconciliation_report(mixed_batch)
+
+    with pytest.raises(ReconciliationReportError) as status_error:
+        report.decisions_with_status("conflict")  # type: ignore[arg-type]
+    with pytest.raises(ReconciliationReportError) as reason_error:
+        report.decisions_with_reason("NOT_VALID")
+
+    assert status_error.value.code == "report.status_filter_type"
+    assert reason_error.value.code == "report.reason_filter_format"
 
 
 def test_decision_report_retains_ranked_scores_contenders_and_selection(mixed_batch):
@@ -183,6 +215,12 @@ def test_summary_rejects_counts_that_do_not_sum_to_total():
         ReconciliationSummary(5, 1, 1, 1, 1, 0, 2_000)
 
     assert captured.value.code == "report.summary_count_mismatch"
+
+
+@pytest.mark.parametrize("count", [0, -1, True, 1.5])
+def test_reason_count_requires_a_positive_integer(count):
+    with pytest.raises(ReconciliationReportError):
+        ReasonCount("decision.example", count)  # type: ignore[arg-type]
 
 
 def test_report_rejects_a_summary_inconsistent_with_decisions(mixed_batch):
