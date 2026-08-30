@@ -4,6 +4,8 @@ from ledgerloom.reconciliation.batches import (
     BatchReconciler,
     CandidateSelectionPolicy,
     ReconciliationBatch,
+    ReconciliationPolicySnapshot,
+    ScoringRuleSnapshot,
 )
 from ledgerloom.reconciliation.candidates import CandidateIndex
 from ledgerloom.reconciliation.decisions import (
@@ -60,10 +62,12 @@ __all__ = [
     "ReconciliationBatch",
     "ReconciliationBatchError",
     "ReconciliationError",
+    "ReconciliationPolicySnapshot",
     "ReconciliationReport",
     "ReconciliationReportError",
     "ReconciliationSummary",
     "ScoringError",
     "ScoringRule",
+    "ScoringRuleSnapshot",
     "build_reconciliation_report",
 ]

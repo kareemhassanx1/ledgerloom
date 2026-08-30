@@ -37,6 +37,7 @@ def test_report_summarizes_every_batch_outcome(mixed_batch):
         ReasonCount("decision.no_candidates", 1),
         ReasonCount("decision.unique_leader", 1),
     )
+    assert report.policy_snapshot == mixed_batch.policy_snapshot
 
 
 def test_report_filters_final_status_and_reason_without_reordering(mixed_batch):
@@ -154,6 +155,7 @@ def test_text_render_is_deterministic_and_exposes_no_reference_values(mixed_batc
         "Reconciliation batch reconcile-2026-08-30\n"
         "Summary: total=5 matched=1 unmatched=1 ambiguous=1 conflict=2 "
         "candidates=5 coverage_bp=2000\n"
+        "Policy: minimum_score=60 minimum_margin=10 "
     )
     assert (
         "anchor-match: matched reason=decision.unique_leader "

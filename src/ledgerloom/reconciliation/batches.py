@@ -12,12 +12,14 @@ from ledgerloom.domain.records import LedgerEntry
 from ledgerloom.reconciliation.candidates import CandidateIndex
 from ledgerloom.reconciliation.decisions import (
     ConflictPolicy,
+    ConflictStrategy,
     DecisionPolicy,
     DecisionStatus,
     MatchDecision,
 )
 from ledgerloom.reconciliation.errors import ReconciliationBatchError
-from ledgerloom.reconciliation.scoring import MatchScorer
+from ledgerloom.reconciliation.scoring import MAX_RULE_WEIGHT, MAX_TOTAL_SCORE, MatchScorer
+from ledgerloom.rules.evidence import validate_rule_code
 
 
 def _entry_order(entry: LedgerEntry) -> tuple[object, EntryId]:
@@ -37,33 +39,41 @@ def _claimed_candidate_id(decision: MatchDecision) -> EntryId | None:
     return None
 
 
-def _require_window(value: object) -> timedelta:
+def _require_window(
+    value: object,
+    *,
+    path: str = "$.selection_policy.max_time_difference",
+) -> timedelta:
     if not isinstance(value, timedelta):
         raise ReconciliationBatchError(
             code="batch.window_type",
-            path="$.selection_policy.max_time_difference",
+            path=path,
             message="maximum time difference must be a timedelta",
         )
     if value < timedelta(0):
         raise ReconciliationBatchError(
             code="batch.window_negative",
-            path="$.selection_policy.max_time_difference",
+            path=path,
             message="maximum time difference must not be negative",
         )
     return value
 
 
-def _require_tolerance(value: object) -> Decimal:
+def _require_tolerance(
+    value: object,
+    *,
+    path: str = "$.selection_policy.max_amount_difference",
+) -> Decimal:
     if not isinstance(value, Decimal):
         raise ReconciliationBatchError(
             code="batch.amount_tolerance_type",
-            path="$.selection_policy.max_amount_difference",
+            path=path,
             message="maximum amount difference must be a Decimal",
         )
     if not value.is_finite() or value < 0:
         raise ReconciliationBatchError(
             code="batch.amount_tolerance_range",
-            path="$.selection_policy.max_amount_difference",
+            path=path,
             message="maximum amount difference must be finite and non-negative",
         )
     _, digits, exponent = value.as_tuple()
@@ -71,7 +81,7 @@ def _require_tolerance(value: object) -> Decimal:
     if len(digits) > 38 or max(-exponent, 0) > 18 or integer_digits > 38:
         raise ReconciliationBatchError(
             code="batch.amount_tolerance_precision",
-            path="$.selection_policy.max_amount_difference",
+            path=path,
             message="maximum amount difference exceeds the supported decimal precision",
         )
     return value
@@ -97,11 +107,116 @@ class CandidateSelectionPolicy:
 
 
 @dataclass(frozen=True, slots=True)
+class ScoringRuleSnapshot:
+    """Auditable rule identity, weight, and required status."""
+
+    rule_id: str
+    weight: int
+    required: bool
+
+    def __post_init__(self) -> None:
+        validate_rule_code(
+            self.rule_id,
+            path="$.policy.scoring_rules.rule_id",
+            kind="id",
+        )
+        if isinstance(self.weight, bool) or not isinstance(self.weight, int):
+            raise ReconciliationBatchError(
+                code="batch.policy_weight_type",
+                path="$.policy.scoring_rules.weight",
+                message="scoring rule weight must be an integer",
+            )
+        if not 1 <= self.weight <= MAX_RULE_WEIGHT:
+            raise ReconciliationBatchError(
+                code="batch.policy_weight_range",
+                path="$.policy.scoring_rules.weight",
+                message=f"scoring rule weight must be between 1 and {MAX_RULE_WEIGHT}",
+            )
+        if not isinstance(self.required, bool):
+            raise ReconciliationBatchError(
+                code="batch.policy_required_type",
+                path="$.policy.scoring_rules.required",
+                message="required must be a boolean",
+            )
+
+
+@dataclass(frozen=True, slots=True)
+class ReconciliationPolicySnapshot:
+    """Exact non-sensitive configuration that produced a batch."""
+
+    scoring_rules: tuple[ScoringRuleSnapshot, ...]
+    minimum_score: int
+    minimum_margin: int
+    max_time_difference: timedelta
+    max_amount_difference: Decimal
+    require_reference: bool
+    conflict_strategy: ConflictStrategy
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.scoring_rules, tuple) or not self.scoring_rules:
+            raise ReconciliationBatchError(
+                code="batch.policy_rules_type",
+                path="$.policy.scoring_rules",
+                message="scoring_rules must be a non-empty tuple",
+            )
+        if not all(isinstance(item, ScoringRuleSnapshot) for item in self.scoring_rules):
+            raise ReconciliationBatchError(
+                code="batch.policy_rule_type",
+                path="$.policy.scoring_rules",
+                message="scoring_rules must contain only ScoringRuleSnapshot values",
+            )
+        rule_ids = tuple(item.rule_id for item in self.scoring_rules)
+        if len(rule_ids) != len(set(rule_ids)):
+            raise ReconciliationBatchError(
+                code="batch.policy_rule_duplicate",
+                path="$.policy.scoring_rules",
+                message="scoring rule identifiers must be unique",
+            )
+        for name, value in (
+            ("minimum_score", self.minimum_score),
+            ("minimum_margin", self.minimum_margin),
+        ):
+            if isinstance(value, bool) or not isinstance(value, int):
+                raise ReconciliationBatchError(
+                    code="batch.policy_threshold_type",
+                    path=f"$.policy.{name}",
+                    message=f"{name} must be an integer",
+                )
+            if not 0 <= value <= MAX_TOTAL_SCORE:
+                raise ReconciliationBatchError(
+                    code="batch.policy_threshold_range",
+                    path=f"$.policy.{name}",
+                    message=f"{name} must be between 0 and {MAX_TOTAL_SCORE}",
+                )
+        _require_window(
+            self.max_time_difference,
+            path="$.policy.max_time_difference",
+        )
+        _require_tolerance(
+            self.max_amount_difference,
+            path="$.policy.max_amount_difference",
+        )
+        if not isinstance(self.require_reference, bool):
+            raise ReconciliationBatchError(
+                code="batch.policy_reference_type",
+                path="$.policy.require_reference",
+                message="require_reference must be a boolean",
+            )
+        if not isinstance(self.conflict_strategy, ConflictStrategy):
+            raise ReconciliationBatchError(
+                code="batch.policy_conflict_strategy_type",
+                path="$.policy.conflict_strategy",
+                message="conflict_strategy must be a ConflictStrategy",
+            )
+
+
+@dataclass(frozen=True, slots=True)
 class ReconciliationBatch:
     """One immutable, conflict-resolved set of per-anchor decisions."""
 
     batch_id: BatchId
     decisions: tuple[MatchDecision, ...]
+    policy_snapshot: ReconciliationPolicySnapshot | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.batch_id, BatchId):
@@ -127,6 +242,14 @@ class ReconciliationBatch:
                 code="batch.decision_type",
                 path="$.batch.decisions",
                 message="decisions must contain only MatchDecision values",
+            )
+        if self.policy_snapshot is not None and not isinstance(
+            self.policy_snapshot, ReconciliationPolicySnapshot
+        ):
+            raise ReconciliationBatchError(
+                code="batch.policy_snapshot_type",
+                path="$.batch.policy_snapshot",
+                message="policy_snapshot must be a ReconciliationPolicySnapshot or None",
             )
         ordered = tuple(sorted(self.decisions, key=_decision_order))
         object.__setattr__(self, "decisions", ordered)
@@ -230,6 +353,23 @@ class BatchReconciler:
                 message="conflict_policy must be a ConflictPolicy",
             )
 
+    @property
+    def policy_snapshot(self) -> ReconciliationPolicySnapshot:
+        """Return the exact configuration safe to retain with a batch."""
+
+        return ReconciliationPolicySnapshot(
+            scoring_rules=tuple(
+                ScoringRuleSnapshot(item.rule_id, item.weight, item.required)
+                for item in self.scorer.rules
+            ),
+            minimum_score=self.decision_policy.minimum_score,
+            minimum_margin=self.decision_policy.minimum_margin,
+            max_time_difference=self.selection_policy.max_time_difference,
+            max_amount_difference=self.selection_policy.max_amount_difference,
+            require_reference=self.selection_policy.require_reference,
+            conflict_strategy=self.conflict_policy.strategy,
+        )
+
     def reconcile(
         self,
         batch_id: BatchId,
@@ -292,4 +432,4 @@ class BatchReconciler:
             ranking = self.scorer.rank(anchor, candidates)
             decisions.append(self.decision_policy.decide(anchor, ranking))
         resolved = self.conflict_policy.resolve(decisions)
-        return ReconciliationBatch(batch_id, resolved)
+        return ReconciliationBatch(batch_id, resolved, self.policy_snapshot)

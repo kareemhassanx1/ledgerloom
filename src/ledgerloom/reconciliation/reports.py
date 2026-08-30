@@ -5,7 +5,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from ledgerloom.domain.identifiers import BatchId, EntryId
-from ledgerloom.reconciliation.batches import ReconciliationBatch
+from ledgerloom.reconciliation.batches import (
+    ReconciliationBatch,
+    ReconciliationPolicySnapshot,
+)
 from ledgerloom.reconciliation.decisions import DecisionStatus, MatchDecision
 from ledgerloom.reconciliation.errors import ReconciliationReportError
 from ledgerloom.reconciliation.scoring import BASIS_POINT_SCALE, MAX_TOTAL_SCORE, CandidateScore
@@ -512,6 +515,7 @@ class ReconciliationReport:
     batch_id: BatchId
     summary: ReconciliationSummary
     decisions: tuple[DecisionReport, ...]
+    policy_snapshot: ReconciliationPolicySnapshot | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.batch_id, BatchId):
@@ -531,6 +535,14 @@ class ReconciliationReport:
                 code="report.decisions_type",
                 path="$.report.decisions",
                 message="decisions must be a non-empty tuple",
+            )
+        if self.policy_snapshot is not None and not isinstance(
+            self.policy_snapshot, ReconciliationPolicySnapshot
+        ):
+            raise ReconciliationReportError(
+                code="report.policy_snapshot_type",
+                path="$.report.policy_snapshot",
+                message="policy_snapshot must be a ReconciliationPolicySnapshot or None",
             )
         if not all(isinstance(item, DecisionReport) for item in self.decisions):
             raise ReconciliationReportError(
@@ -649,6 +661,21 @@ class ReconciliationReport:
                 f"coverage_bp={summary.coverage_basis_points}"
             ),
         ]
+        if self.policy_snapshot is not None:
+            policy = self.policy_snapshot
+            rules = ",".join(
+                f"{item.rule_id}:{item.weight}:{str(item.required).lower()}"
+                for item in policy.scoring_rules
+            )
+            lines.append(
+                "Policy: "
+                f"minimum_score={policy.minimum_score} "
+                f"minimum_margin={policy.minimum_margin} "
+                f"time_window={policy.max_time_difference} "
+                f"amount_tolerance={policy.max_amount_difference} "
+                f"require_reference={str(policy.require_reference).lower()} "
+                f"conflict_strategy={policy.conflict_strategy} rules={rules}"
+            )
         for decision in self.decisions:
             selected = (
                 "none"
@@ -717,4 +744,5 @@ def build_reconciliation_report(batch: ReconciliationBatch) -> ReconciliationRep
         batch.batch_id,
         ReconciliationSummary.from_decisions(batch.decisions),
         tuple(reports),
+        batch.policy_snapshot,
     )

@@ -31,6 +31,12 @@ identifier belongs to any batch anchor as a defensive invariant.
 `decision_for()` performs typed anchor lookup, and `matched_pairs` exposes
 conflict-free identifier pairs in batch order.
 
+Every reconciler-created batch carries a `ReconciliationPolicySnapshot`. It
+records rule identifiers, integer weights and required flags; score and margin
+thresholds; exact time and amount tolerances; reference selection; and the
+conflict strategy. The snapshot contains configuration only, not ledger values,
+and lets reports explain which policy produced their decisions.
+
 A conflict must have at least two claims on its disputed candidate: another
 conflict or a uniquely winning matched decision. Orphan conflict objects are
 rejected rather than published without a real competing party.
@@ -78,6 +84,8 @@ logs and manual inspection. It prints only identifiers, status and reason codes,
 scores, eligibility, contenders, and summary counts. It does not print monetary
 amounts, references, or the scalar facts inside rule evidence. A future CLI can
 use the structured report directly or apply a different presentation policy.
+When present, the batch's policy snapshot is rendered before individual
+decisions so an inspected log includes its decision context.
 
 ## Example
 

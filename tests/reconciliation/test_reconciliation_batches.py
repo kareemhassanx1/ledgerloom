@@ -17,7 +17,9 @@ from ledgerloom.reconciliation import (
     MatchScorer,
     ReconciliationBatch,
     ReconciliationBatchError,
+    ReconciliationPolicySnapshot,
     ScoringRule,
+    ScoringRuleSnapshot,
 )
 from ledgerloom.rules import AmountRule, ReferenceRule, SameAccountRule
 
@@ -39,6 +41,19 @@ def test_batch_workflow_produces_all_outcome_types_in_canonical_order(mixed_batc
     )
     assert mixed_batch.matched_pairs == (
         (EntryId("anchor-match"), EntryId("candidate-match")),
+    )
+    assert mixed_batch.policy_snapshot == ReconciliationPolicySnapshot(
+        scoring_rules=(
+            ScoringRuleSnapshot("ledgerloom.same_account", 20, True),
+            ScoringRuleSnapshot("ledgerloom.amount", 50, False),
+            ScoringRuleSnapshot("ledgerloom.reference", 30, False),
+        ),
+        minimum_score=60,
+        minimum_margin=10,
+        max_time_difference=timedelta(minutes=5),
+        max_amount_difference=Decimal("0.01"),
+        require_reference=False,
+        conflict_strategy=ConflictStrategy.REJECT_ALL,
     )
 
 
@@ -311,3 +326,23 @@ def test_batch_and_reconciler_are_immutable(mixed_batch, batch_reconciler):
         mixed_batch.batch_id = BatchId("changed")  # type: ignore[misc]
     with pytest.raises(FrozenInstanceError):
         batch_reconciler.scorer = object()  # type: ignore[misc]
+
+
+def test_policy_snapshot_rejects_duplicate_rule_identifiers():
+    rules = (
+        ScoringRuleSnapshot("ledgerloom.same_account", 10, True),
+        ScoringRuleSnapshot("ledgerloom.same_account", 20, False),
+    )
+
+    with pytest.raises(ReconciliationBatchError) as captured:
+        ReconciliationPolicySnapshot(
+            rules,
+            0,
+            0,
+            timedelta(0),
+            Decimal("0"),
+            False,
+            ConflictStrategy.REJECT_ALL,
+        )
+
+    assert captured.value.code == "batch.policy_rule_duplicate"
