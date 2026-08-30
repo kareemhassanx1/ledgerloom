@@ -23,7 +23,7 @@ tested library surface.
 - [x] Composable match rules and structured evidence.
 - [x] Candidate indexes for account, amount, reference, and time windows.
 - [x] Deterministic scoring, ambiguity detection, and conflict policies.
-- Explainable batch results and summary reports.
+- [x] Explainable batch results and summary reports.
 
 ## Boundaries
 

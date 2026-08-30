@@ -98,5 +98,5 @@ decision = policy.decide(anchor, scores)
 resolved_decisions = ConflictPolicy().resolve(all_anchor_decisions)
 ```
 
-Batch reconciliation and summary reports consume these immutable decisions in
-the next milestone; they do not need to re-run or reinterpret matching rules.
+[Reconciliation batches and reports](reconciliation-batches.md) consume these
+immutable decisions without re-running or reinterpreting matching rules.

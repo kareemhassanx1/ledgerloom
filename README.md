@@ -62,8 +62,10 @@ by account, exact or tolerant amount, reference, and inclusive time windows,
 while amount, reference, and time-window rules explain field-level matches.
 Integer-only weighted scoring retains every explanation, explicit margins keep
 tied or close candidates ambiguous, and conflict policies prevent two anchors
-from silently claiming the same entry. The next releases add explainable batch
-reports before import adapters, durable persistence, and the CLI.
+from silently claiming the same entry. Deterministic batch workflows now connect
+those stages and produce verified summaries, structured per-candidate evidence,
+and privacy-conscious text reports. The next releases add streaming import
+adapters, durable persistence, and the CLI.
 
 ## License
 

@@ -89,6 +89,15 @@ uniquely higher scoring selection; equal leaders remain conflicts. Score-based
 conflict resolution rejects mixed maximum-score scales rather than comparing
 unlike values.
 
+Batch reconciliation connects the candidate index, scorer, decision policy, and
+conflict policy without hiding their intermediate results. A batch owns a typed
+identifier and a canonical, conflict-free decision sequence. Structured reports
+remove full entry objects while retaining identifiers, scores, reason codes, and
+rule evidence. Summary counts and basis-point coverage are recomputed and
+verified against report decisions, so an inconsistent aggregate cannot be
+published through the public model. The optional text renderer omits evidence
+facts such as references and amounts.
+
 `ledgerloom.ingest`
 : Parsers and validation pipelines for external record formats. Import failures
   are data, not control-flow exceptions, so one bad row does not hide later rows.
