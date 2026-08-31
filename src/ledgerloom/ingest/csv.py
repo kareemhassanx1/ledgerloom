@@ -49,12 +49,28 @@ class CsvHeaderPolicy:
 
 
 @dataclass(frozen=True, slots=True)
+class CsvRowPolicy:
+    """Control whether rows containing no values are skipped or diagnosed."""
+
+    skip_blank_rows: bool = True
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.skip_blank_rows, bool):
+            raise IngestError(
+                code="ingest.csv_blank_policy_type",
+                path="$.csv.row_policy.skip_blank_rows",
+                message="skip_blank_rows must be a boolean",
+            )
+
+
+@dataclass(frozen=True, slots=True)
 class CsvImporter:
     """Read CSV records lazily and return one validation outcome per data row."""
 
     mapper: SourceRecordMapper
     delimiter: str = ","
     header_policy: CsvHeaderPolicy = CsvHeaderPolicy()
+    row_policy: CsvRowPolicy = CsvRowPolicy()
 
     def __post_init__(self) -> None:
         if not isinstance(self.mapper, SourceRecordMapper):
@@ -69,6 +85,12 @@ class CsvImporter:
                 code="ingest.csv_header_policy_type",
                 path="$.csv.header_policy",
                 message="header_policy must be a CsvHeaderPolicy",
+            )
+        if not isinstance(self.row_policy, CsvRowPolicy):
+            raise IngestError(
+                code="ingest.csv_row_policy_type",
+                path="$.csv.row_policy",
+                message="row_policy must be a CsvRowPolicy",
             )
 
     def import_rows(self, lines: Iterable[str]) -> Iterator[ImportRowResult]:
@@ -162,9 +184,26 @@ class CsvImporter:
                     path=f"$.csv.line[{next_line}]",
                     message="CSV record is malformed",
                 ) from error
-            record_number += 1
-            location = ImportLocation(record_number, next_line)
+            line_number = next_line
             next_line = reader.line_num + 1
+            if not row or all(value == "" for value in row):
+                if self.row_policy.skip_blank_rows:
+                    continue
+                record_number += 1
+                location = ImportLocation(record_number, line_number)
+                yield ImportRowResult(
+                    location,
+                    ValidationResult.failure(
+                        Diagnostic(
+                            "ingest.csv_row_blank",
+                            "row",
+                            "row must contain at least one value",
+                        )
+                    ),
+                )
+                continue
+            record_number += 1
+            location = ImportLocation(record_number, line_number)
             if len(row) != len(header):
                 yield ImportRowResult(
                     location,

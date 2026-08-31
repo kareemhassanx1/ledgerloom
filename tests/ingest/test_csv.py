@@ -6,6 +6,7 @@ from ledgerloom.domain import SourceId
 from ledgerloom.ingest import (
     CsvHeaderPolicy,
     CsvImporter,
+    CsvRowPolicy,
     IngestError,
     SourceRecordMapper,
 )
@@ -179,3 +180,39 @@ def test_csv_extra_columns_are_policy_controlled():
         tuple(strict.import_rows(StringIO(content)))
 
     assert captured.value.code == "ingest.csv_header_unexpected"
+
+
+def test_csv_skips_blank_rows_but_preserves_physical_line_locations():
+    source = StringIO(
+        "record_id,account_id,amount,currency,occurred_at\n"
+        "\n"
+        ",,,,\n"
+        "txn-1,assets:cash,10,USD,2026-08-31T08:00:00Z\n"
+    )
+
+    results = tuple(_importer().import_rows(source))
+
+    assert len(results) == 1
+    assert results[0].location.record_number == 1
+    assert results[0].location.line_number == 4
+
+
+def test_csv_can_diagnose_blank_rows_and_continue():
+    importer = CsvImporter(
+        SourceRecordMapper(SourceId("bank")),
+        row_policy=CsvRowPolicy(skip_blank_rows=False),
+    )
+    source = StringIO(
+        "record_id,account_id,amount,currency,occurred_at\n"
+        "\n"
+        "txn-1,assets:cash,10,USD,2026-08-31T08:00:00Z\n"
+    )
+
+    blank, valid = tuple(importer.import_rows(source))
+
+    assert blank.location.record_number == 1
+    assert blank.location.line_number == 2
+    assert blank.diagnostics[0].code == "ingest.csv_row_blank"
+    assert valid.location.record_number == 2
+    assert valid.location.line_number == 3
+    assert valid.is_valid
