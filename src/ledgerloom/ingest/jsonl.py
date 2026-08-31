@@ -31,12 +31,29 @@ def _reject_constant(_: str) -> Any:
     raise ValueError("non-standard numeric constant")
 
 
+def _positive_limit(value: object, *, path: str, label: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise IngestError(
+            code="ingest.limit_type",
+            path=path,
+            message=f"{label} must be an integer",
+        )
+    if value < 1:
+        raise IngestError(
+            code="ingest.limit_range",
+            path=path,
+            message=f"{label} must be at least one",
+        )
+    return value
+
+
 @dataclass(frozen=True, slots=True)
 class JsonlPolicy:
     """Control blank-line and first-line byte-order-mark handling."""
 
     skip_blank_lines: bool = True
     allow_utf8_bom: bool = True
+    max_line_characters: int = 1_000_000
 
     def __post_init__(self) -> None:
         if not isinstance(self.skip_blank_lines, bool):
@@ -51,6 +68,11 @@ class JsonlPolicy:
                 path="$.jsonl.policy.allow_utf8_bom",
                 message="allow_utf8_bom must be a boolean",
             )
+        _positive_limit(
+            self.max_line_characters,
+            path="$.jsonl.policy.max_line_characters",
+            label="maximum line characters",
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -108,6 +130,15 @@ class JsonlImporter:
                     )
                     continue
                 line = line.removeprefix("\ufeff")
+            if len(line) > self.policy.max_line_characters:
+                record_number += 1
+                yield self._failure(
+                    record_number,
+                    line_number,
+                    "ingest.jsonl_line_too_long",
+                    "line exceeds the configured character limit",
+                )
+                continue
             if not line.strip():
                 if self.policy.skip_blank_lines:
                     continue

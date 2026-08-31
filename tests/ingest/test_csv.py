@@ -216,3 +216,49 @@ def test_csv_can_diagnose_blank_rows_and_continue():
     assert valid.location.record_number == 2
     assert valid.location.line_number == 3
     assert valid.is_valid
+
+
+def test_csv_header_column_limit_fails_before_data_rows():
+    importer = CsvImporter(
+        SourceRecordMapper(SourceId("bank")),
+        header_policy=CsvHeaderPolicy(max_columns=5),
+    )
+    content = "record_id,account_id,amount,currency,occurred_at,reference\n"
+
+    with pytest.raises(IngestError) as captured:
+        tuple(importer.import_rows(StringIO(content)))
+
+    assert captured.value.code == "ingest.csv_header_too_wide"
+
+
+def test_csv_field_limit_rejects_one_row_and_continues_without_value_leakage():
+    importer = CsvImporter(
+        SourceRecordMapper(SourceId("bank")),
+        row_policy=CsvRowPolicy(max_field_characters=20),
+    )
+    private_value = "private-" + "x" * 30
+    source = StringIO(
+        "record_id,account_id,amount,currency,occurred_at,reference\n"
+        f"txn-1,assets:cash,10,USD,2026-08-31T08:00:00Z,{private_value}\n"
+        "txn-2,assets:cash,20,USD,2026-08-31T09:00:00Z,ok\n"
+    )
+
+    rejected, accepted = tuple(importer.import_rows(source))
+
+    assert rejected.diagnostics[0].code == "ingest.csv_field_too_long"
+    assert private_value not in repr(rejected.diagnostics)
+    assert accepted.is_valid
+
+
+@pytest.mark.parametrize(
+    "factory",
+    [
+        lambda: CsvHeaderPolicy(max_columns=0),
+        lambda: CsvRowPolicy(max_field_characters=True),
+    ],
+)
+def test_csv_limits_require_positive_integers(factory):
+    with pytest.raises(IngestError) as captured:
+        factory()
+
+    assert captured.value.code in {"ingest.limit_type", "ingest.limit_range"}

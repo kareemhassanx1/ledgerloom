@@ -130,3 +130,29 @@ def test_jsonl_rejects_non_iterable_style_inputs():
         tuple(_importer().import_rows("{}"))
 
     assert captured.value.code == "ingest.lines_type"
+
+
+def test_jsonl_line_limit_rejects_one_line_and_continues_without_value_leakage():
+    private_value = "private-" + "x" * 100
+    importer = _importer(JsonlPolicy(max_line_characters=200))
+
+    rejected, accepted = tuple(
+        importer.import_rows(
+            (
+                _line(reference=private_value),
+                _line(record_id="txn-2", reference=None),
+            )
+        )
+    )
+
+    assert rejected.diagnostics[0].code == "ingest.jsonl_line_too_long"
+    assert private_value not in repr(rejected.diagnostics)
+    assert accepted.is_valid
+
+
+@pytest.mark.parametrize("value", [0, -1, True, 1.5])
+def test_jsonl_line_limit_requires_a_positive_integer(value):
+    with pytest.raises(IngestError) as captured:
+        JsonlPolicy(max_line_characters=value)  # type: ignore[arg-type]
+
+    assert captured.value.code in {"ingest.limit_type", "ingest.limit_range"}

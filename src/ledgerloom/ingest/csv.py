@@ -26,12 +26,29 @@ def _validate_delimiter(value: object) -> str:
     return value
 
 
+def _positive_limit(value: object, *, path: str, label: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise IngestError(
+            code="ingest.limit_type",
+            path=path,
+            message=f"{label} must be an integer",
+        )
+    if value < 1:
+        raise IngestError(
+            code="ingest.limit_range",
+            path=path,
+            message=f"{label} must be at least one",
+        )
+    return value
+
+
 @dataclass(frozen=True, slots=True)
 class CsvHeaderPolicy:
     """Control BOM handling and whether unmapped CSV columns are accepted."""
 
     allow_extra_columns: bool = True
     allow_utf8_bom: bool = True
+    max_columns: int = 256
 
     def __post_init__(self) -> None:
         if not isinstance(self.allow_extra_columns, bool):
@@ -46,6 +63,11 @@ class CsvHeaderPolicy:
                 path="$.csv.header_policy.allow_utf8_bom",
                 message="allow_utf8_bom must be a boolean",
             )
+        _positive_limit(
+            self.max_columns,
+            path="$.csv.header_policy.max_columns",
+            label="maximum columns",
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -53,6 +75,7 @@ class CsvRowPolicy:
     """Control whether rows containing no values are skipped or diagnosed."""
 
     skip_blank_rows: bool = True
+    max_field_characters: int = 4096
 
     def __post_init__(self) -> None:
         if not isinstance(self.skip_blank_rows, bool):
@@ -61,6 +84,11 @@ class CsvRowPolicy:
                 path="$.csv.row_policy.skip_blank_rows",
                 message="skip_blank_rows must be a boolean",
             )
+        _positive_limit(
+            self.max_field_characters,
+            path="$.csv.row_policy.max_field_characters",
+            label="maximum field characters",
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -135,6 +163,12 @@ class CsvImporter:
                 path="$.csv.header",
                 message="CSV header must contain named columns",
             )
+        if len(header) > self.header_policy.max_columns:
+            raise IngestError(
+                code="ingest.csv_header_too_wide",
+                path="$.csv.header",
+                message="CSV header exceeds the configured column limit",
+            )
         if any(
             not item
             or item != item.strip()
@@ -204,6 +238,18 @@ class CsvImporter:
                 continue
             record_number += 1
             location = ImportLocation(record_number, line_number)
+            if any(len(value) > self.row_policy.max_field_characters for value in row):
+                yield ImportRowResult(
+                    location,
+                    ValidationResult.failure(
+                        Diagnostic(
+                            "ingest.csv_field_too_long",
+                            "row",
+                            "one or more fields exceed the configured character limit",
+                        )
+                    ),
+                )
+                continue
             if len(row) != len(header):
                 yield ImportRowResult(
                     location,
