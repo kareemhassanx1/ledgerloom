@@ -27,8 +27,8 @@ tested library surface.
 
 ## Boundaries
 
-- Streaming CSV and JSON Lines importers.
-- Schema mapping and row-level validation diagnostics.
+- [x] Streaming CSV and JSON Lines importers.
+- [x] Schema mapping and row-level validation diagnostics.
 - SQLite storage with transactional batch writes.
 - Command-line workflows for import, reconcile, inspect, and export.
 

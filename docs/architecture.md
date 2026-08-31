@@ -109,6 +109,15 @@ prevent an input batch from being paired with unrelated reconciliation output.
 : Parsers and validation pipelines for external record formats. Import failures
   are data, not control-flow exceptions, so one bad row does not hide later rows.
 
+CSV and JSON Lines adapters share a configurable `SourceRecordMapper`, return
+lazy `ImportRowResult` sequences, and retain logical record plus physical line
+locations without retaining raw values. CSV header and row policies make BOM,
+extra-column, blank-row, width, and field-size behavior explicit. JSON Lines
+rejects malformed values, non-object roots, duplicate keys, non-standard numeric
+constants, and oversized lines independently. A composable source-key filter
+rejects later duplicates, while a terminal summary aggregates outcome and
+diagnostic counts without materializing the imported records.
+
 `ledgerloom.storage`
 : Replaceable persistence adapters. SQLite is the first durable implementation.
 

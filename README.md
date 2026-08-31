@@ -18,7 +18,7 @@ as immutable domain data.
 - Append-only journals with integrity reports, resumable replay, and snapshots.
 - Configurable exact, tolerance, date-window, and composite match rules.
 - Explainable reconciliation decisions and conflict resolution.
-- CSV and JSON Lines ingestion with structured validation errors.
+- Streaming CSV and JSON Lines ingestion with structured validation errors.
 - SQLite persistence and a command-line interface for repeatable batch runs.
 - Reports that distinguish matched, unmatched, ambiguous, and invalid records.
 
@@ -66,8 +66,11 @@ from silently claiming the same entry. Deterministic batch workflows now connect
 those stages and produce verified summaries, structured per-candidate evidence,
 and privacy-conscious text reports. Input-aware reports join those decisions to
 ordered validation results, covering matched, unmatched, ambiguous, and invalid
-records without retaining rejected values. The next releases add streaming
-import adapters, durable persistence, and the CLI.
+records without retaining rejected values. Streaming CSV and JSON Lines adapters
+map configurable schemas into source records,
+continue after row-level failures, enforce resource limits, detect duplicate
+source identities, and produce deterministic operational summaries. The next
+releases add durable persistence and the CLI.
 
 ## License
 
