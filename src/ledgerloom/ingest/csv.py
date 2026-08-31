@@ -27,11 +27,34 @@ def _validate_delimiter(value: object) -> str:
 
 
 @dataclass(frozen=True, slots=True)
+class CsvHeaderPolicy:
+    """Control BOM handling and whether unmapped CSV columns are accepted."""
+
+    allow_extra_columns: bool = True
+    allow_utf8_bom: bool = True
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.allow_extra_columns, bool):
+            raise IngestError(
+                code="ingest.csv_extra_policy_type",
+                path="$.csv.header_policy.allow_extra_columns",
+                message="allow_extra_columns must be a boolean",
+            )
+        if not isinstance(self.allow_utf8_bom, bool):
+            raise IngestError(
+                code="ingest.csv_bom_policy_type",
+                path="$.csv.header_policy.allow_utf8_bom",
+                message="allow_utf8_bom must be a boolean",
+            )
+
+
+@dataclass(frozen=True, slots=True)
 class CsvImporter:
     """Read CSV records lazily and return one validation outcome per data row."""
 
     mapper: SourceRecordMapper
     delimiter: str = ","
+    header_policy: CsvHeaderPolicy = CsvHeaderPolicy()
 
     def __post_init__(self) -> None:
         if not isinstance(self.mapper, SourceRecordMapper):
@@ -41,6 +64,12 @@ class CsvImporter:
                 message="mapper must be a SourceRecordMapper",
             )
         _validate_delimiter(self.delimiter)
+        if not isinstance(self.header_policy, CsvHeaderPolicy):
+            raise IngestError(
+                code="ingest.csv_header_policy_type",
+                path="$.csv.header_policy",
+                message="header_policy must be a CsvHeaderPolicy",
+            )
 
     def import_rows(self, lines: Iterable[str]) -> Iterator[ImportRowResult]:
         """Yield rows without materializing the source or prior outcomes."""
@@ -70,11 +99,34 @@ class CsvImporter:
                 message="CSV header is malformed",
             ) from error
 
+        if header and header[0].startswith("\ufeff"):
+            if not self.header_policy.allow_utf8_bom:
+                raise IngestError(
+                    code="ingest.csv_header_bom",
+                    path="$.csv.header[0]",
+                    message="UTF-8 byte-order mark is not allowed by the header policy",
+                )
+            header[0] = header[0].removeprefix("\ufeff")
         if not header or all(not item for item in header):
             raise IngestError(
                 code="ingest.csv_header_empty",
                 path="$.csv.header",
                 message="CSV header must contain named columns",
+            )
+        if any(
+            not item
+            or item != item.strip()
+            or not item.isprintable()
+            or len(item) > 128
+            for item in header
+        ):
+            raise IngestError(
+                code="ingest.csv_header_name",
+                path="$.csv.header",
+                message=(
+                    "CSV header names must be non-empty printable text without "
+                    "surrounding whitespace and at most 128 characters"
+                ),
             )
         if len(header) != len(set(header)):
             raise IngestError(
@@ -88,6 +140,13 @@ class CsvImporter:
                 code="ingest.csv_header_missing",
                 path="$.csv.header",
                 message="CSV header is missing one or more required mapped columns",
+            )
+        unexpected = tuple(name for name in header if name not in self.mapper.columns.all)
+        if unexpected and not self.header_policy.allow_extra_columns:
+            raise IngestError(
+                code="ingest.csv_header_unexpected",
+                path="$.csv.header",
+                message="CSV header contains one or more unmapped columns",
             )
 
         next_line = reader.line_num + 1

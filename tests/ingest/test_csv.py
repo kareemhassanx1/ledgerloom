@@ -3,7 +3,12 @@ from io import StringIO
 import pytest
 
 from ledgerloom.domain import SourceId
-from ledgerloom.ingest import CsvImporter, IngestError, SourceRecordMapper
+from ledgerloom.ingest import (
+    CsvHeaderPolicy,
+    CsvImporter,
+    IngestError,
+    SourceRecordMapper,
+)
 
 
 def _importer() -> CsvImporter:
@@ -119,3 +124,58 @@ def test_csv_validates_stream_and_delimiter_configuration():
 
     assert lines_error.value.code == "ingest.lines_type"
     assert delimiter_error.value.code == "ingest.csv_delimiter"
+
+
+def test_csv_accepts_and_removes_a_utf8_bom_by_default():
+    source = StringIO(
+        "\ufeffrecord_id,account_id,amount,currency,occurred_at\n"
+        "txn-1,assets:cash,10,USD,2026-08-31T08:00:00Z\n"
+    )
+
+    result = next(_importer().import_rows(source))
+
+    assert result.is_valid
+    assert result.record.record_id.value == "txn-1"
+
+
+def test_csv_can_reject_a_bom_under_a_strict_header_policy():
+    importer = CsvImporter(
+        SourceRecordMapper(SourceId("bank")),
+        header_policy=CsvHeaderPolicy(allow_utf8_bom=False),
+    )
+
+    with pytest.raises(IngestError) as captured:
+        tuple(importer.import_rows(StringIO("\ufeffrecord_id\n")))
+
+    assert captured.value.code == "ingest.csv_header_bom"
+
+
+@pytest.mark.parametrize("header", [" record_id", "record_id ", "", "bad\x00name"])
+def test_csv_rejects_ambiguous_header_names(header):
+    content = (
+        f"{header},account_id,amount,currency,occurred_at\n"
+        "txn-1,assets:cash,10,USD,2026-08-31T08:00:00Z\n"
+    )
+
+    with pytest.raises(IngestError) as captured:
+        tuple(_importer().import_rows(StringIO(content)))
+
+    assert captured.value.code in {"ingest.csv_header_empty", "ingest.csv_header_name"}
+
+
+def test_csv_extra_columns_are_policy_controlled():
+    content = (
+        "record_id,account_id,amount,currency,occurred_at,vendor_status\n"
+        "txn-1,assets:cash,10,USD,2026-08-31T08:00:00Z,settled\n"
+    )
+    permissive = _importer()
+    strict = CsvImporter(
+        SourceRecordMapper(SourceId("bank")),
+        header_policy=CsvHeaderPolicy(allow_extra_columns=False),
+    )
+
+    assert next(permissive.import_rows(StringIO(content))).is_valid
+    with pytest.raises(IngestError) as captured:
+        tuple(strict.import_rows(StringIO(content)))
+
+    assert captured.value.code == "ingest.csv_header_unexpected"
