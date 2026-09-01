@@ -23,6 +23,10 @@ class JournalIntegrityError(JournalError):
     """Raised when stored entries no longer form a valid hash chain."""
 
 
+class JournalStorageError(JournalError):
+    """Raised when durable journal storage cannot complete an operation."""
+
+
 class JournalReplayError(JournalError):
     """Raised when a verified entry cannot be decoded for replay."""
 

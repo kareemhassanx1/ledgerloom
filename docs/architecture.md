@@ -32,9 +32,17 @@ schema documents. Each entry fingerprint covers its sequence, event schema and
 content fingerprint, and the preceding entry fingerprint. The in-memory adapter
 verifies the complete chain before returning events or accepting an append. An
 optimistic expected-sequence guard coordinates competing writers, while a
-configurable hard limit caps cursor-based reads. A durable adapter must preserve
-those observable semantics and surface integrity failures instead of skipping
-damaged entries.
+configurable hard limit caps cursor-based reads. The SQLite adapter preserves
+those semantics across process restarts. It verifies stored documents, the full
+chain, and independently committed count and head metadata before every read or
+write instead of skipping damaged entries.
+
+SQLite multi-document appends run inside one immediate transaction. The write
+lock is acquired before the current head is read, so the expected-sequence check,
+entry inserts, and metadata update observe one state and commit or roll back
+together. Separate adapter instances therefore serialize writers through SQLite;
+a writer carrying a stale expected sequence receives the same conflict error as
+the in-memory journal.
 
 Integrity inspection reports the verified prefix and first broken sequence
 without requiring a successful read. Independently stored count and head values
@@ -119,7 +127,10 @@ rejects later duplicates, while a terminal summary aggregates outcome and
 diagnostic counts without materializing the imported records.
 
 `ledgerloom.storage`
-: Replaceable persistence adapters. SQLite is the first durable implementation.
+: Replaceable persistence adapters. `SqliteDatabase` owns versioned connections
+  and explicit transaction boundaries. `SQLiteJournal` stores canonical event
+  bytes, hash-chain links, and recovery metadata in a WAL-backed database. A
+  reopened adapter verifies the committed history before exposing it.
 
 `ledgerloom.cli`
 : A thin command layer over the public application services.

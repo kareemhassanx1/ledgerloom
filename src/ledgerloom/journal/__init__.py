@@ -10,6 +10,7 @@ from ledgerloom.journal.errors import (
     JournalError,
     JournalIntegrityError,
     JournalReplayError,
+    JournalStorageError,
     ProjectionError,
     ProjectionSnapshotError,
 )
@@ -53,6 +54,7 @@ __all__ = [
     "JournalIntegrityReport",
     "JournalReplayError",
     "JournalReplayer",
+    "JournalStorageError",
     "Projection",
     "ProjectionCheckpoint",
     "ProjectionError",

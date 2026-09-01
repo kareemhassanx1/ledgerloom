@@ -29,7 +29,7 @@ tested library surface.
 
 - [x] Streaming CSV and JSON Lines importers.
 - [x] Schema mapping and row-level validation diagnostics.
-- SQLite storage with transactional batch writes.
+- [x] SQLite storage with transactional batch writes.
 - Command-line workflows for import, reconcile, inspect, and export.
 
 ## Hardening

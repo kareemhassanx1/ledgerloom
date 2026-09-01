@@ -19,7 +19,7 @@ as immutable domain data.
 - Configurable exact, tolerance, date-window, and composite match rules.
 - Explainable reconciliation decisions and conflict resolution.
 - Streaming CSV and JSON Lines ingestion with structured validation errors.
-- SQLite persistence and a command-line interface for repeatable batch runs.
+- SQLite journal persistence and a command-line interface for repeatable batch runs.
 - Reports that distinguish matched, unmatched, ambiguous, and invalid records.
 
 ## Development setup
@@ -70,7 +70,9 @@ records without retaining rejected values. Streaming CSV and JSON Lines adapters
 map configurable schemas into source records,
 continue after row-level failures, enforce resource limits, detect duplicate
 source identities, and produce deterministic operational summaries. The next
-releases add durable persistence and the CLI.
+release now includes durable SQLite journals with atomic multi-event appends,
+verified reopen behavior, recovery metadata, and optimistic concurrency guards.
+The next release adds the CLI.
 
 ## License
 
