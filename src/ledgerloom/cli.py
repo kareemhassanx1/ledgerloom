@@ -4,18 +4,19 @@ from __future__ import annotations
 
 import argparse
 import hashlib
-import os
 import sys
-import tempfile
 from collections.abc import Sequence
-from contextlib import suppress
 from dataclasses import dataclass
 from datetime import timedelta
 from decimal import Decimal, InvalidOperation
 from enum import IntEnum
 from pathlib import Path
 
-from ledgerloom.application import CatalogError, JournalCatalog
+from ledgerloom.application import (
+    CatalogError,
+    JournalCatalog,
+    export_journal_jsonl,
+)
 from ledgerloom.domain import (
     BatchId,
     Diagnostic,
@@ -56,12 +57,9 @@ from ledgerloom.rules import (
     TimeWindowRule,
 )
 from ledgerloom.serialization import (
-    canonical_json_bytes,
     canonical_json_text,
     domain_v1_registry,
-    loads_canonical_json,
 )
-from ledgerloom.serialization.fingerprints import ContentFingerprint
 from ledgerloom.storage import SQLiteJournal, SQLiteJournalMode, StorageError
 
 
@@ -428,66 +426,28 @@ def _run_inspect(arguments: argparse.Namespace) -> tuple[dict[str, object], Exit
     }, ExitCode.SUCCESS if report.is_valid else ExitCode.STORAGE_FAILURE
 
 
-def _write_export(path: Path, content: bytes, *, force: bool) -> None:
-    if path.exists() and not force:
-        raise _CliError(
-            "cli.output_exists", "$.output", "output already exists; pass --force to replace it"
-        )
-    parent = path.resolve().parent
-    if not parent.is_dir():
-        raise _CliError(
-            "cli.output_parent", "$.output", "output parent directory does not exist"
-        )
-    descriptor, temporary_name = tempfile.mkstemp(
-        dir=parent, prefix=f".{path.name}.", suffix=".tmp"
-    )
-    try:
-        with os.fdopen(descriptor, "wb") as stream:
-            stream.write(content)
-            stream.flush()
-            os.fsync(stream.fileno())
-        os.replace(temporary_name, path)
-    except BaseException:
-        with suppress(FileNotFoundError):
-            os.unlink(temporary_name)
-        raise
-
-
 def _run_export(arguments: argparse.Namespace) -> tuple[dict[str, object], ExitCode]:
     database = arguments.database.resolve()
-    output = arguments.output.resolve()
-    if database == output:
-        raise _CliError(
-            "cli.output_database", "$.output", "output must not replace the journal database"
-        )
     with SQLiteJournal(arguments.database, mode=SQLiteJournalMode.READ_ONLY) as journal:
         entries = _read_all(journal)
-    lines = []
-    for entry in entries:
-        lines.append(
-            canonical_json_bytes(
-                {
-                    "document": loads_canonical_json(entry.document.content),
-                    "document_fingerprint": str(entry.document.fingerprint),
-                    "journal_fingerprint": str(entry.fingerprint),
-                    "sequence": entry.sequence,
-                }
-            )
-            + b"\n"
-        )
-    content = b"".join(lines)
-    try:
-        _write_export(arguments.output, content, force=arguments.force)
-    except OSError as error:
-        raise _CliError(
-            "cli.output_write", "$.output", "output file could not be written"
-        ) from error
+    protected = (
+        database,
+        Path(f"{database}-wal"),
+        Path(f"{database}-shm"),
+        Path(f"{database}-journal"),
+    )
+    exported = export_journal_jsonl(
+        entries,
+        arguments.output,
+        force=arguments.force,
+        protected_paths=protected,
+    )
     return {
-        "bytes": len(content),
-        "entry_count": len(entries),
-        "fingerprint": str(ContentFingerprint.from_bytes(content)),
+        "bytes": exported.bytes_written,
+        "entry_count": exported.entry_count,
+        "fingerprint": str(exported.fingerprint),
         "format": "ledgerloom-journal-jsonl-v1",
-        "output": str(output),
+        "output": str(exported.output),
     }, ExitCode.SUCCESS
 
 
