@@ -82,6 +82,7 @@ class Money:
             )
 
         _, digits, exponent = self.amount.as_tuple()
+        assert isinstance(exponent, int)
         if len(digits) > _MAX_SIGNIFICANT_DIGITS:
             raise DomainValidationError(
                 code="money.too_precise",
@@ -213,4 +214,3 @@ class Money:
 
     def __str__(self) -> str:
         return f"{self.canonical_amount()} {self.currency.code}"
-

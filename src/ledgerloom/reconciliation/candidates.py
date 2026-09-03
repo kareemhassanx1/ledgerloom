@@ -65,6 +65,7 @@ def _require_amount_tolerance(value: object, *, path: str) -> Decimal:
             message="amount tolerance must be finite and non-negative",
         )
     _, digits, exponent = value.as_tuple()
+    assert isinstance(exponent, int)
     integer_digits = max(len(digits) + exponent, 0)
     if len(digits) > 38 or max(-exponent, 0) > 18 or integer_digits > 38:
         raise CandidateIndexError(

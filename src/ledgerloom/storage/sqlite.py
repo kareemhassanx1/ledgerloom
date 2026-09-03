@@ -11,6 +11,7 @@ from enum import StrEnum
 from pathlib import Path
 from threading import RLock
 from types import TracebackType
+from typing import cast
 
 from ledgerloom.journal.entries import MAX_JOURNAL_SEQUENCE, JournalEntry
 from ledgerloom.journal.errors import (
@@ -214,7 +215,10 @@ class SqliteDatabase:
         with self._lock:
             connection = self._require_open()
             try:
-                return connection.execute(sql, parameters).fetchone()
+                return cast(
+                    sqlite3.Row | None,
+                    connection.execute(sql, parameters).fetchone(),
+                )
             except sqlite3.Error as error:
                 raise StorageError(
                     code="storage.read_failed",

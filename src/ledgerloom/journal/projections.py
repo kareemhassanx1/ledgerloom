@@ -279,7 +279,10 @@ class ProjectionSnapshot:
             )
         )
         try:
-            cursor = ReplayCursor(cursor_value["sequence"], cursor_fingerprint)
+            cursor = ReplayCursor(
+                cast(int, cursor_value["sequence"]),
+                cursor_fingerprint,
+            )
         except JournalError as error:
             raise ProjectionSnapshotError(
                 code="projection.snapshot_cursor",
@@ -425,7 +428,7 @@ class ProjectionRunner:
             )
         return ProjectionCheckpoint(
             projection=projection.name,
-            state=cast(T, state),
+            state=state,
             cursor=resolved.cursor,
         )
 

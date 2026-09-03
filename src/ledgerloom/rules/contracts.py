@@ -13,7 +13,9 @@ from ledgerloom.rules.evidence import RuleEvidence, validate_rule_code
 class MatchRule(Protocol):
     """A deterministic comparison that explains its result."""
 
-    rule_id: str
+    @property
+    def rule_id(self) -> str:
+        """Return the stable identifier included in emitted evidence."""
 
     def evaluate(self, left: LedgerEntry, right: LedgerEntry) -> RuleEvidence:
         """Compare two entries and return structured evidence."""

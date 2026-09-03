@@ -11,6 +11,7 @@ from datetime import timedelta
 from decimal import Decimal, InvalidOperation
 from enum import IntEnum
 from pathlib import Path
+from typing import Never
 
 from ledgerloom.application import (
     CatalogError,
@@ -87,7 +88,7 @@ class _CliError(LedgerLoomError):
 
 
 class _ArgumentParser(argparse.ArgumentParser):
-    def error(self, message: str) -> None:
+    def error(self, message: str) -> Never:
         raise _CliError("cli.usage", "$.arguments", message)
 
 

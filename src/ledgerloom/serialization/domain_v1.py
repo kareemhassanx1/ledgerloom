@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from typing import cast
 
 from ledgerloom.domain.batches import LedgerBatch
 from ledgerloom.domain.diagnostics import Diagnostic, DiagnosticSeverity, ValidationResult
@@ -21,6 +22,7 @@ from ledgerloom.serialization.canonical import JsonValue
 from ledgerloom.serialization.errors import SerializationError
 from ledgerloom.serialization.schema import (
     FunctionSchemaCodec,
+    SchemaCodec,
     SchemaRef,
     SchemaRegistry,
 )
@@ -257,7 +259,9 @@ def decode_diagnostic(value: JsonValue, *, path: str) -> Diagnostic:
 
 def _encode_result(result: ValidationResult[LedgerEntry]) -> dict[str, JsonValue]:
     validated = _require_python_type(result, ValidationResult)
-    diagnostics = [encode_diagnostic(item) for item in validated.diagnostics]
+    diagnostics: list[JsonValue] = [
+        encode_diagnostic(item) for item in validated.diagnostics
+    ]
     if validated.value is None:
         return {"diagnostics": diagnostics, "status": "rejected"}
     return {
@@ -368,9 +372,9 @@ def register_domain_v1(registry: SchemaRegistry) -> SchemaRegistry:
             path="$",
             message="registry must be a SchemaRegistry",
         )
-    registry.register(SOURCE_RECORD_V1_CODEC)
-    registry.register(LEDGER_ENTRY_V1_CODEC)
-    registry.register(LEDGER_BATCH_V1_CODEC)
+    registry.register(cast(SchemaCodec[object], SOURCE_RECORD_V1_CODEC))
+    registry.register(cast(SchemaCodec[object], LEDGER_ENTRY_V1_CODEC))
+    registry.register(cast(SchemaCodec[object], LEDGER_BATCH_V1_CODEC))
     return registry
 
 

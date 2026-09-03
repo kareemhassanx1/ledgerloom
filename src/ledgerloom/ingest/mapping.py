@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from typing import TypeVar
 
 from ledgerloom.domain.diagnostics import Diagnostic, ValidationResult
 from ledgerloom.domain.errors import DomainValidationError
@@ -14,6 +15,7 @@ from ledgerloom.domain.time import UtcTimestamp
 from ledgerloom.ingest.errors import IngestError
 
 _MAX_COLUMN_NAME_LENGTH = 128
+_ConstructedValue = TypeVar("_ConstructedValue")
 
 
 def _validate_column_name(value: object, *, field: str) -> str:
@@ -173,7 +175,10 @@ class SourceRecordMapper:
         if diagnostics:
             return ValidationResult.failure(*diagnostics)
 
-        def construct(field: str, factory):
+        def construct(
+            field: str,
+            factory: Callable[[], _ConstructedValue],
+        ) -> _ConstructedValue | None:
             try:
                 return factory()
             except DomainValidationError as error:
@@ -186,18 +191,25 @@ class SourceRecordMapper:
                 )
                 return None
 
-        record_id = construct(
-            "record_id", lambda: SourceRecordId(values["record_id"])
-        )
-        account_id = construct(
-            "account_id", lambda: AccountId(values["account_id"])
-        )
+        record_id_text = values["record_id"]
+        account_id_text = values["account_id"]
+        amount_text = values["amount"]
+        currency_text = values["currency"]
+        occurred_at_text = values["occurred_at"]
+        assert record_id_text is not None
+        assert account_id_text is not None
+        assert amount_text is not None
+        assert currency_text is not None
+        assert occurred_at_text is not None
+
+        record_id = construct("record_id", lambda: SourceRecordId(record_id_text))
+        account_id = construct("account_id", lambda: AccountId(account_id_text))
         amount = construct(
             "amount",
-            lambda: Money.parse(values["amount"], values["currency"]),
+            lambda: Money.parse(amount_text, currency_text),
         )
         occurred_at = construct(
-            "occurred_at", lambda: UtcTimestamp.parse(values["occurred_at"])
+            "occurred_at", lambda: UtcTimestamp.parse(occurred_at_text)
         )
         if diagnostics:
             return ValidationResult.failure(*diagnostics)

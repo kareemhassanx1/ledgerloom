@@ -78,6 +78,7 @@ def _require_tolerance(
             message="maximum amount difference must be finite and non-negative",
         )
     _, digits, exponent = value.as_tuple()
+    assert isinstance(exponent, int)
     integer_digits = max(len(digits) + exponent, 0)
     if len(digits) > 38 or max(-exponent, 0) > 18 or integer_digits > 38:
         raise ReconciliationBatchError(
@@ -368,16 +369,16 @@ class ReconciliationBatch:
                 path="$.batch.decisions",
                 message="one entry must not be both an anchor and a claimed candidate",
             )
-        if any(
-            decision.status is DecisionStatus.CONFLICT
-            and len(claim_groups[_claimed_candidate_id(decision)]) < 2
-            for decision in ordered
-        ):
-            raise ReconciliationBatchError(
-                code="batch.orphan_conflict",
-                path="$.batch.decisions",
-                message="every conflict must identify another claim on its candidate",
-            )
+        for decision in ordered:
+            if decision.status is DecisionStatus.CONFLICT:
+                candidate_id = _claimed_candidate_id(decision)
+                assert candidate_id is not None
+                if len(claim_groups[candidate_id]) < 2:
+                    raise ReconciliationBatchError(
+                        code="batch.orphan_conflict",
+                        path="$.batch.decisions",
+                        message="every conflict must identify another claim on its candidate",
+                    )
         if self.policy_snapshot is not None:
             expected_rule_ids = tuple(
                 item.rule_id for item in self.policy_snapshot.scoring_rules

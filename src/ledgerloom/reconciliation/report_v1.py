@@ -5,6 +5,8 @@ from __future__ import annotations
 from collections.abc import Callable
 from datetime import timedelta
 from decimal import Decimal, InvalidOperation
+from functools import partial
+from typing import cast
 
 from ledgerloom.domain.identifiers import BatchId, EntryId
 from ledgerloom.reconciliation.batches import (
@@ -21,6 +23,7 @@ from ledgerloom.reconciliation.reports import (
     SelectionReport,
 )
 from ledgerloom.rules import EvidenceFact, MatchVerdict, RuleEvidence
+from ledgerloom.rules.evidence import EvidenceScalar
 from ledgerloom.serialization.canonical import JsonValue
 from ledgerloom.serialization.errors import SerializationError
 from ledgerloom.serialization.fingerprints import ContentFingerprint
@@ -280,12 +283,11 @@ def _decode_evidence(
             path=fact_path,
             fields=frozenset({"name", "value"}),
         )
+        fact_name = _text(fact["name"], path=f"{fact_path}.name")
+        fact_scalar = cast(EvidenceScalar, fact["value"])
         facts.append(
             _construct(
-                lambda fact=fact, fact_path=fact_path: EvidenceFact(
-                    _text(fact["name"], path=f"{fact_path}.name"),
-                    fact["value"],  # type: ignore[arg-type]
-                ),
+                partial(EvidenceFact, fact_name, fact_scalar),
                 path=fact_path,
             )
         )
@@ -500,13 +502,12 @@ def _decode_policy(
             path=rule_path,
             fields=frozenset({"required", "rule_id", "weight"}),
         )
+        rule_id = _text(rule["rule_id"], path=f"{rule_path}.rule_id")
+        weight = _integer(rule["weight"], path=f"{rule_path}.weight")
+        required = _boolean(rule["required"], path=f"{rule_path}.required")
         rules.append(
             _construct(
-                lambda rule=rule, rule_path=rule_path: ScoringRuleSnapshot(
-                    _text(rule["rule_id"], path=f"{rule_path}.rule_id"),
-                    _integer(rule["weight"], path=f"{rule_path}.weight"),
-                    _boolean(rule["required"], path=f"{rule_path}.required"),
-                ),
+                partial(ScoringRuleSnapshot, rule_id, weight, required),
                 path=rule_path,
             )
         )

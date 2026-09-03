@@ -55,7 +55,9 @@ class JournalCatalog:
                 "$.unrecognized_entries",
                 "unrecognized entries must be a tuple of JournalEntry values",
             )
-        identifiers = tuple(item.batch_id for item in (*self.batches, *self.reports))
+        identifiers = tuple(item.batch_id for item in self.batches) + tuple(
+            item.batch_id for item in self.reports
+        )
         if len(identifiers) != len(set(identifiers)):
             raise CatalogError(
                 "catalog.batch_duplicate",
@@ -108,7 +110,9 @@ class JournalCatalog:
 
     @property
     def batch_ids(self) -> frozenset[BatchId]:
-        return frozenset(item.batch_id for item in (*self.batches, *self.reports))
+        return frozenset(item.batch_id for item in self.batches) | frozenset(
+            item.batch_id for item in self.reports
+        )
 
     def contains_batch(self, batch_id: BatchId) -> bool:
         if not isinstance(batch_id, BatchId):
@@ -124,4 +128,3 @@ class JournalCatalog:
         return tuple(
             dict.fromkeys(entry.document.schema.name for entry in self.unrecognized_entries)
         )
-
