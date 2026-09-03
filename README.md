@@ -69,10 +69,12 @@ ordered validation results, covering matched, unmatched, ambiguous, and invalid
 records without retaining rejected values. Streaming CSV and JSON Lines adapters
 map configurable schemas into source records,
 continue after row-level failures, enforce resource limits, detect duplicate
-source identities, and produce deterministic operational summaries. The next
-release now includes durable SQLite journals with atomic multi-event appends,
+source identities, and produce deterministic operational summaries. The current
+release includes durable SQLite journals with atomic multi-event appends,
 verified reopen behavior, recovery metadata, and optimistic concurrency guards.
-The next release adds the CLI.
+It also exposes import, reconcile, inspect, and export CLI workflows with
+canonical JSON results, documented exit codes, and restart-safe SQLite state.
+See [the command-line workflow guide](docs/cli.md) for examples and contracts.
 
 ## License
 

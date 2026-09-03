@@ -133,7 +133,10 @@ diagnostic counts without materializing the imported records.
   reopened adapter verifies the committed history before exposing it.
 
 `ledgerloom.cli`
-: A thin command layer over the public application services.
+: A thin command layer over the public application services. Commands emit one
+  canonical JSON result envelope and use documented process exit codes. Import
+  batches and reconciliation reports are appended to the same verified SQLite
+  journal, allowing inspect and export to operate without hidden process state.
 
 ## Dependency rule
 
