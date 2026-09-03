@@ -15,7 +15,7 @@ from ledgerloom.journal import (
     JournalStorageError,
 )
 from ledgerloom.serialization.domain_v1 import domain_v1_registry
-from ledgerloom.storage import SQLiteJournal
+from ledgerloom.storage import SQLiteJournal, SQLiteJournalMode
 
 
 def event(record_id: str):
@@ -49,6 +49,47 @@ def test_batch_append_survives_close_reopen_and_resumes_chain(tmp_path):
         fourth = reopened.append(event("txn-4"), expected_sequence=4)
         assert fourth.previous_fingerprint == persisted_head
         assert reopened.integrity_report(expected_count=4).is_valid
+
+
+@pytest.mark.parametrize(
+    "mode", (SQLiteJournalMode.OPEN, SQLiteJournalMode.READ_ONLY)
+)
+def test_existing_modes_never_create_a_missing_database(tmp_path, mode):
+    path = tmp_path / "missing.sqlite3"
+
+    with pytest.raises(JournalStorageError) as captured:
+        SQLiteJournal(path, mode=mode)
+
+    assert captured.value.code == "journal.storage_not_found"
+    assert not path.exists()
+
+
+def test_read_only_mode_verifies_existing_data_and_rejects_writes(tmp_path):
+    path = tmp_path / "read-only.sqlite3"
+    with SQLiteJournal(path) as journal:
+        expected = journal.append(event("txn-1"))
+
+    with SQLiteJournal(path, mode=SQLiteJournalMode.READ_ONLY) as journal:
+        assert journal.read() == (expected,)
+        with pytest.raises(JournalStorageError) as captured:
+            journal.append(event("txn-2"))
+
+    assert captured.value.code == "journal.storage_read_only"
+
+
+def test_only_read_only_mode_can_disable_eager_verification(tmp_path):
+    path = tmp_path / "unsafe-open.sqlite3"
+    with SQLiteJournal(path):
+        pass
+
+    with pytest.raises(JournalError) as captured:
+        SQLiteJournal(
+            path,
+            mode=SQLiteJournalMode.OPEN,
+            verify_on_open=False,
+        )
+
+    assert captured.value.code == "journal.unverified_writable_open"
 
 
 def test_failed_batch_insert_rolls_back_every_row_and_metadata(tmp_path):

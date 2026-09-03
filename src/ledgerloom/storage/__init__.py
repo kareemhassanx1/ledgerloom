@@ -5,11 +5,13 @@ from ledgerloom.storage.sqlite import (
     SQLITE_STORAGE_SCHEMA_VERSION,
     SqliteDatabase,
     SQLiteJournal,
+    SQLiteJournalMode,
 )
 
 __all__ = [
     "SQLITE_STORAGE_SCHEMA_VERSION",
     "SQLiteJournal",
+    "SQLiteJournalMode",
     "SqliteDatabase",
     "StorageError",
 ]

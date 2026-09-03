@@ -7,6 +7,7 @@ import os
 import sqlite3
 from collections.abc import Iterable, Iterator
 from contextlib import contextmanager, suppress
+from enum import StrEnum
 from pathlib import Path
 from threading import RLock
 from types import TracebackType
@@ -29,6 +30,14 @@ SQLITE_STORAGE_SCHEMA_VERSION = 1
 _FORMAT_VERSION = 1
 _BUSY_TIMEOUT_SECONDS = 5.0
 _MAX_TIMEOUT_SECONDS = 60.0
+
+
+class SQLiteJournalMode(StrEnum):
+    """Control whether a journal may be created or mutated while opening."""
+
+    CREATE = "create"
+    OPEN = "open"
+    READ_ONLY = "read_only"
 
 
 def _validate_path(value: object) -> str:
@@ -258,6 +267,8 @@ class SQLiteJournal:
         database: str | os.PathLike[str],
         *,
         max_read_limit: int = DEFAULT_MAX_READ_LIMIT,
+        mode: SQLiteJournalMode = SQLiteJournalMode.CREATE,
+        verify_on_open: bool = True,
     ) -> None:
         try:
             database_text = os.fspath(database)
@@ -273,6 +284,24 @@ class SQLiteJournal:
                 path="$.database",
                 message="database path must be non-empty text without null characters",
             )
+        if not isinstance(mode, SQLiteJournalMode):
+            raise JournalError(
+                code="journal.database_mode_type",
+                path="$.mode",
+                message="mode must be a SQLiteJournalMode",
+            )
+        if not isinstance(verify_on_open, bool):
+            raise JournalError(
+                code="journal.verify_on_open_type",
+                path="$.verify_on_open",
+                message="verify_on_open must be a boolean",
+            )
+        if not verify_on_open and mode is not SQLiteJournalMode.READ_ONLY:
+            raise JournalError(
+                code="journal.unverified_writable_open",
+                path="$.verify_on_open",
+                message="only a read-only journal may skip verification on open",
+            )
         resolved_limit = _integer(
             max_read_limit,
             code="journal.max_read_limit_type",
@@ -286,20 +315,47 @@ class SQLiteJournal:
                 message=f"max read limit must be between 1 and {MAX_CONFIGURED_READ_LIMIT}",
             )
 
+        is_memory = database_text == ":memory:"
+        if is_memory and mode is not SQLiteJournalMode.CREATE:
+            raise JournalStorageError(
+                code="journal.storage_not_found",
+                path="$.database",
+                message="an existing on-disk journal is required",
+            )
+        database_path = None if is_memory else Path(database_text).resolve()
+        exists = is_memory or (database_path is not None and database_path.is_file())
+        if mode is not SQLiteJournalMode.CREATE and not exists:
+            raise JournalStorageError(
+                code="journal.storage_not_found",
+                path="$.database",
+                message="journal database was not found",
+            )
+
         self._database = database_text
         self._max_read_limit = resolved_limit
+        self._mode = mode
         self._lock = RLock()
         self._closed = False
         try:
+            connection_target = database_text
+            use_uri = False
+            if mode is not SQLiteJournalMode.CREATE:
+                assert database_path is not None
+                sqlite_mode = "ro" if mode is SQLiteJournalMode.READ_ONLY else "rw"
+                connection_target = f"{database_path.as_uri()}?mode={sqlite_mode}"
+                use_uri = True
             self._connection = sqlite3.connect(
-                database_text,
+                connection_target,
                 timeout=_BUSY_TIMEOUT_SECONDS,
                 isolation_level=None,
                 check_same_thread=False,
+                uri=use_uri,
             )
-            self._configure()
-            self._initialize_schema()
-            self.verify()
+            self._configure(writable=mode is not SQLiteJournalMode.READ_ONLY)
+            if mode is SQLiteJournalMode.CREATE and (is_memory or not exists):
+                self._initialize_schema()
+            if verify_on_open:
+                self.verify()
         except (sqlite3.Error, OSError) as error:
             connection = getattr(self, "_connection", None)
             if connection is not None:
@@ -324,6 +380,10 @@ class SQLiteJournal:
     @property
     def max_read_limit(self) -> int:
         return self._max_read_limit
+
+    @property
+    def mode(self) -> SQLiteJournalMode:
+        return self._mode
 
     @property
     def next_sequence(self) -> int:
@@ -523,11 +583,12 @@ class SQLiteJournal:
         entries, _ = self._verified_snapshot()
         return len(entries)
 
-    def _configure(self) -> None:
+    def _configure(self, *, writable: bool) -> None:
         self._connection.execute("PRAGMA foreign_keys = ON")
         self._connection.execute("PRAGMA busy_timeout = 5000")
-        self._connection.execute("PRAGMA journal_mode = WAL")
-        self._connection.execute("PRAGMA synchronous = FULL")
+        if writable:
+            self._connection.execute("PRAGMA journal_mode = WAL")
+            self._connection.execute("PRAGMA synchronous = FULL")
 
     def _initialize_schema(self) -> None:
         try:
@@ -666,6 +727,12 @@ class SQLiteJournal:
     @contextmanager
     def _transaction(self, *, write: bool) -> Iterator[None]:
         self._ensure_open()
+        if write and self._mode is SQLiteJournalMode.READ_ONLY:
+            raise JournalStorageError(
+                code="journal.storage_read_only",
+                path="$.database",
+                message="read-only journals do not accept writes",
+            )
         self._connection.execute("BEGIN IMMEDIATE" if write else "BEGIN")
         try:
             yield
