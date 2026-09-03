@@ -33,3 +33,7 @@ class ReconciliationBatchError(ReconciliationError):
 
 class ReconciliationReportError(ReconciliationError):
     """Describe an inconsistent structured reconciliation report."""
+
+
+class ReconciliationClaimError(ReconciliationError):
+    """Describe invalid or conflicting durable reconciliation claims."""

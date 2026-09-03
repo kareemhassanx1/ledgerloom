@@ -5,7 +5,9 @@ import sys
 
 import pytest
 
+from ledgerloom.application import JournalCatalog
 from ledgerloom.cli import ExitCode, main
+from ledgerloom.reconciliation import DecisionStatus
 from ledgerloom.serialization import SchemaDocument, SchemaRef
 from ledgerloom.storage import SQLiteJournal
 
@@ -359,3 +361,81 @@ def test_import_fails_closed_for_a_future_known_schema(tmp_path, capsys) -> None
     assert payload["error"]["code"] == "catalog.schema_version_unsupported"
     with SQLiteJournal(database) as journal:
         assert len(journal) == 1
+
+
+def test_reconciliation_preserves_claims_across_separate_runs(tmp_path, capsys) -> None:
+    database = tmp_path / "claims.db"
+    specifications = (
+        ("bank", "batch-a", "a", "2026-09-02T12:00:00Z"),
+        ("processor", "batch-b", "b", "2026-09-02T12:04:00Z"),
+        ("settlement", "batch-c", "c", "2026-09-02T12:08:00Z"),
+    )
+    for source_id, batch_id, record_id, occurred_at in specifications:
+        source = tmp_path / f"{source_id}.csv"
+        _write_csv(
+            source,
+            record_id=record_id,
+            occurred_at=occurred_at,
+            reference="invoice-shared",
+        )
+        code, _ = _run(
+            capsys,
+            "import",
+            str(source),
+            "--database",
+            str(database),
+            "--source",
+            source_id,
+            "--batch",
+            batch_id,
+        )
+        assert code == ExitCode.SUCCESS
+
+    code, first = _run(
+        capsys,
+        "reconcile",
+        "--database",
+        str(database),
+        "--anchor-batch",
+        "batch-a",
+        "--batch",
+        "report-a",
+    )
+    assert code == ExitCode.SUCCESS
+    assert first["result"]["matched"] == 1
+
+    code, second = _run(
+        capsys,
+        "reconcile",
+        "--database",
+        str(database),
+        "--anchor-batch",
+        "batch-c",
+        "--batch",
+        "report-c",
+    )
+    assert code == ExitCode.SUCCESS
+    assert second["result"]["matched"] == 0
+    assert second["result"]["conflict"] == 1
+
+    with SQLiteJournal(database) as journal:
+        catalog = JournalCatalog.from_entries(journal.read())
+    decision = catalog.reports[-1].decisions[0]
+    assert decision.status is DecisionStatus.CONFLICT
+    assert decision.reason_code == "conflict.candidate_already_claimed"
+    assert decision.competing_anchor_ids == (
+        catalog.reports[-2].decisions[0].anchor_id,
+    )
+
+    code, reused = _run(
+        capsys,
+        "reconcile",
+        "--database",
+        str(database),
+        "--anchor-batch",
+        "batch-a",
+        "--batch",
+        "report-a-again",
+    )
+    assert code == ExitCode.INVALID_REQUEST
+    assert reused["error"]["code"] == "claim.anchor_already_matched"

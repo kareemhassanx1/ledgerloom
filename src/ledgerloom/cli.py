@@ -43,6 +43,7 @@ from ledgerloom.reconciliation import (
     ConflictStrategy,
     DecisionPolicy,
     MatchScorer,
+    ReconciliationClaims,
     ScoringRule,
     build_reconciliation_report,
     build_reconciliation_report_document,
@@ -352,6 +353,8 @@ def _run_reconcile(arguments: argparse.Namespace) -> tuple[dict[str, object], Ex
                 "$.anchor_batch",
                 "anchor batch has no accepted entries",
             )
+        claims = ReconciliationClaims.from_reports(catalog.reports)
+        claims.require_available_anchors(anchor_batch.entries)
         candidates = tuple(
             entry
             for batch in catalog.batches
@@ -363,7 +366,7 @@ def _run_reconcile(arguments: argparse.Namespace) -> tuple[dict[str, object], Ex
             anchor_batch.entries,
             CandidateIndex(candidates),
         )
-        report = build_reconciliation_report(reconciliation)
+        report = claims.resolve(build_reconciliation_report(reconciliation))
         document = build_reconciliation_report_document(report)
         appended = journal.append(document, expected_sequence=len(entries) + 1)
 

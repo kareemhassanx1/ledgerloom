@@ -13,6 +13,7 @@ from ledgerloom.reconciliation.candidates import (
     CandidateSelection,
     CandidateSelectionTrace,
 )
+from ledgerloom.reconciliation.claims import EntryClaim, ReconciliationClaims
 from ledgerloom.reconciliation.decisions import (
     ConflictPolicy,
     ConflictStrategy,
@@ -24,6 +25,7 @@ from ledgerloom.reconciliation.errors import (
     CandidateIndexError,
     DecisionError,
     ReconciliationBatchError,
+    ReconciliationClaimError,
     ReconciliationError,
     ReconciliationReportError,
     ScoringError,
@@ -80,6 +82,7 @@ __all__ = [
     "DecisionPolicy",
     "DecisionReport",
     "DecisionStatus",
+    "EntryClaim",
     "InputOutcomeReport",
     "InputReconciliationReport",
     "InputReconciliationSummary",
@@ -88,6 +91,8 @@ __all__ = [
     "ReasonCount",
     "ReconciliationBatch",
     "ReconciliationBatchError",
+    "ReconciliationClaimError",
+    "ReconciliationClaims",
     "ReconciliationError",
     "ReconciliationPolicySnapshot",
     "ReconciliationRecordStatus",
