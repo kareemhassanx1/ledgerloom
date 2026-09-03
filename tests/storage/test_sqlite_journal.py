@@ -76,6 +76,28 @@ def test_failed_batch_insert_rolls_back_every_row_and_metadata(tmp_path):
     journal.close()
 
 
+def test_failed_commit_rolls_back_and_leaves_connection_reusable(tmp_path):
+    path = tmp_path / "commit-failure.sqlite3"
+    journal = SQLiteJournal(path)
+
+    def deny_commit(action, argument, *_):
+        if action == sqlite3.SQLITE_TRANSACTION and argument == "COMMIT":
+            return sqlite3.SQLITE_DENY
+        return sqlite3.SQLITE_OK
+
+    journal._connection.set_authorizer(deny_commit)
+    with pytest.raises(JournalStorageError) as captured:
+        journal.append(event("rejected"), expected_sequence=1)
+
+    assert captured.value.code == "journal.storage_error"
+    assert journal._connection.in_transaction is False
+
+    journal._connection.set_authorizer(None)
+    appended = journal.append(event("accepted"), expected_sequence=1)
+    assert journal.read() == (appended,)
+    journal.close()
+
+
 def test_stale_batch_expectation_does_not_mutate_database(tmp_path):
     with SQLiteJournal(tmp_path / "conflict.sqlite3") as journal:
         first = journal.append(event("txn-1"))

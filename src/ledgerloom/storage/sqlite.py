@@ -6,7 +6,7 @@ import math
 import os
 import sqlite3
 from collections.abc import Iterable, Iterator
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from pathlib import Path
 from threading import RLock
 from types import TracebackType
@@ -674,7 +674,13 @@ class SQLiteJournal:
                 self._connection.rollback()
             raise
         else:
-            self._connection.commit()
+            try:
+                self._connection.commit()
+            except BaseException:
+                if self._connection.in_transaction:
+                    with suppress(sqlite3.Error):
+                        self._connection.rollback()
+                raise
 
     def _ensure_open(self) -> None:
         if self._closed:
