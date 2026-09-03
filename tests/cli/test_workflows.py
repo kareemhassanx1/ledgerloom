@@ -1,8 +1,12 @@
 import json
+import sqlite3
 import subprocess
 import sys
 
+import pytest
+
 from ledgerloom.cli import ExitCode, main
+from ledgerloom.storage import SQLiteJournal
 
 
 def _run(capsys, *arguments: str) -> tuple[int, dict[str, object]]:
@@ -176,6 +180,8 @@ def test_partial_import_is_persisted_with_a_distinct_exit_code(tmp_path, capsys)
 
 def test_errors_use_the_stable_json_shape_and_exit_codes(tmp_path, capsys) -> None:
     database = tmp_path / "ledgerloom.db"
+    with SQLiteJournal(database):
+        pass
 
     code, missing = _run(
         capsys,
@@ -207,6 +213,8 @@ def test_errors_use_the_stable_json_shape_and_exit_codes(tmp_path, capsys) -> No
 
 def test_python_module_entry_point_runs_in_a_fresh_process(tmp_path) -> None:
     database = tmp_path / "ledgerloom.db"
+    with SQLiteJournal(database):
+        pass
 
     completed = subprocess.run(
         [
@@ -234,3 +242,85 @@ def test_python_module_entry_point_runs_in_a_fresh_process(tmp_path) -> None:
             "integrity": {"is_valid": True, "issues": [], "valid_entries": 0},
         },
     }
+
+
+@pytest.mark.parametrize(
+    ("arguments", "output_name"),
+    (
+        (("inspect",), None),
+        (("export",), "export.jsonl"),
+        (("reconcile", "--anchor-batch", "missing", "--batch", "attempt"), None),
+    ),
+)
+def test_existing_journal_commands_do_not_create_a_missing_database(
+    tmp_path,
+    capsys,
+    arguments,
+    output_name,
+) -> None:
+    database = tmp_path / "missing.db"
+    command = [arguments[0], "--database", str(database), *arguments[1:]]
+    output = None
+    if output_name is not None:
+        output = tmp_path / output_name
+        command.extend(("--output", str(output)))
+
+    code, payload = _run(capsys, *command)
+
+    assert code == ExitCode.NOT_FOUND
+    assert payload["error"] == {
+        "code": "journal.storage_not_found",
+        "message": "journal database was not found",
+        "path": "$.database",
+    }
+    assert not database.exists()
+    assert output is None or not output.exists()
+
+
+def test_inspect_reports_metadata_corruption_without_repairing_it(tmp_path, capsys) -> None:
+    database = tmp_path / "corrupt.db"
+    source = tmp_path / "source.csv"
+    _write_csv(
+        source,
+        record_id="bank-1",
+        occurred_at="2026-09-02T12:00:00Z",
+        reference="invoice-1",
+    )
+    code, _ = _run(
+        capsys,
+        "import",
+        str(source),
+        "--database",
+        str(database),
+        "--source",
+        "bank",
+        "--batch",
+        "import-bank",
+    )
+    assert code == ExitCode.SUCCESS
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            "UPDATE ledgerloom_journal_metadata SET entry_count = 2 WHERE singleton = 1"
+        )
+
+    code, payload = _run(capsys, "inspect", "--database", str(database))
+
+    assert code == ExitCode.STORAGE_FAILURE
+    assert payload["ok"] is True
+    assert payload["result"]["events"] == []
+    assert payload["result"]["integrity"] == {
+        "is_valid": False,
+        "issues": [
+            {
+                "code": "journal.truncated",
+                "message": "expected 2 entries, found 1",
+                "path": "$",
+                "sequence": 2,
+            }
+        ],
+        "valid_entries": 1,
+    }
+    with sqlite3.connect(database) as connection:
+        assert connection.execute(
+            "SELECT entry_count FROM ledgerloom_journal_metadata WHERE singleton = 1"
+        ).fetchone() == (2,)

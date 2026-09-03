@@ -64,7 +64,7 @@ from ledgerloom.serialization import (
     loads_canonical_json,
 )
 from ledgerloom.serialization.fingerprints import ContentFingerprint
-from ledgerloom.storage import SQLiteJournal, StorageError
+from ledgerloom.storage import SQLiteJournal, SQLiteJournalMode, StorageError
 
 
 class ExitCode(IntEnum):
@@ -359,7 +359,7 @@ def _run_reconcile(arguments: argparse.Namespace) -> tuple[dict[str, object], Ex
     anchor_batch_id = BatchId(arguments.anchor_batch)
     result_batch_id = BatchId(arguments.batch)
     reconciler = _default_reconciler(arguments)
-    with SQLiteJournal(arguments.database) as journal:
+    with SQLiteJournal(arguments.database, mode=SQLiteJournalMode.OPEN) as journal:
         entries = _read_all(journal)
         batches, reports = _stored_objects(entries)
         if result_batch_id in _known_batch_ids(batches, reports):
@@ -416,9 +416,13 @@ def _run_reconcile(arguments: argparse.Namespace) -> tuple[dict[str, object], Ex
 
 
 def _run_inspect(arguments: argparse.Namespace) -> tuple[dict[str, object], ExitCode]:
-    with SQLiteJournal(arguments.database) as journal:
-        entries = _read_all(journal)
+    with SQLiteJournal(
+        arguments.database,
+        mode=SQLiteJournalMode.READ_ONLY,
+        verify_on_open=False,
+    ) as journal:
         report = journal.integrity_report()
+        entries = _read_all(journal) if report.is_valid else ()
     events = [
         {
             "document_fingerprint": str(entry.document.fingerprint),
@@ -483,7 +487,7 @@ def _run_export(arguments: argparse.Namespace) -> tuple[dict[str, object], ExitC
         raise _CliError(
             "cli.output_database", "$.output", "output must not replace the journal database"
         )
-    with SQLiteJournal(arguments.database) as journal:
+    with SQLiteJournal(arguments.database, mode=SQLiteJournalMode.READ_ONLY) as journal:
         entries = _read_all(journal)
     lines = []
     for entry in entries:
@@ -552,7 +556,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     except JournalIntegrityError as error:
         _emit(_error_payload(command, error))
         return int(ExitCode.STORAGE_FAILURE)
-    except (JournalStorageError, StorageError) as error:
+    except JournalStorageError as error:
+        _emit(_error_payload(command, error))
+        exit_code = (
+            ExitCode.NOT_FOUND
+            if error.code == "journal.storage_not_found"
+            else ExitCode.STORAGE_FAILURE
+        )
+        return int(exit_code)
+    except StorageError as error:
         _emit(_error_payload(command, error))
         return int(ExitCode.STORAGE_FAILURE)
     except LedgerLoomError as error:
