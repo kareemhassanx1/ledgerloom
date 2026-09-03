@@ -60,6 +60,7 @@ from ledgerloom.serialization import (
     canonical_json_text,
     domain_v1_registry,
 )
+from ledgerloom.serialization.fingerprints import ContentFingerprint
 from ledgerloom.storage import SQLiteJournal, SQLiteJournalMode, StorageError
 
 
@@ -123,6 +124,8 @@ def _build_parser() -> argparse.ArgumentParser:
 
     inspect_parser = commands.add_parser("inspect", help="verify and describe a journal")
     inspect_parser.add_argument("--database", type=Path, required=True)
+    inspect_parser.add_argument("--expected-count", type=int)
+    inspect_parser.add_argument("--expected-head")
     inspect_parser.set_defaults(handler=_run_inspect)
 
     export_parser = commands.add_parser("export", help="export verified journal events")
@@ -376,12 +379,25 @@ def _run_reconcile(arguments: argparse.Namespace) -> tuple[dict[str, object], Ex
 
 
 def _run_inspect(arguments: argparse.Namespace) -> tuple[dict[str, object], ExitCode]:
+    expected_head = None
+    if arguments.expected_head is not None:
+        try:
+            expected_head = ContentFingerprint.parse(arguments.expected_head)
+        except LedgerLoomError as error:
+            raise _CliError(
+                "cli.expected_head",
+                "$.expected_head",
+                "expected head must be a sha256 fingerprint",
+            ) from error
     with SQLiteJournal(
         arguments.database,
         mode=SQLiteJournalMode.READ_ONLY,
         verify_on_open=False,
     ) as journal:
-        snapshot = journal.inspect_snapshot()
+        snapshot = journal.inspect_snapshot(
+            expected_count=arguments.expected_count,
+            expected_head=expected_head,
+        )
         report = snapshot.integrity
         entries = snapshot.verified_entries
     events = [

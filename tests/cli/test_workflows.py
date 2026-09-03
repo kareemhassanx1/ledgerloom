@@ -439,3 +439,61 @@ def test_reconciliation_preserves_claims_across_separate_runs(tmp_path, capsys) 
     )
     assert code == ExitCode.INVALID_REQUEST
     assert reused["error"]["code"] == "claim.anchor_already_matched"
+
+
+def test_inspect_compares_external_recovery_anchors(tmp_path, capsys) -> None:
+    database = tmp_path / "recovery.db"
+    source = tmp_path / "source.csv"
+    _write_csv(
+        source,
+        record_id="bank-1",
+        occurred_at="2026-09-02T12:00:00Z",
+        reference="invoice-1",
+    )
+    code, imported = _run(
+        capsys,
+        "import",
+        str(source),
+        "--database",
+        str(database),
+        "--source",
+        "bank",
+        "--batch",
+        "import-bank",
+    )
+    assert code == ExitCode.SUCCESS
+
+    code, valid = _run(
+        capsys,
+        "inspect",
+        "--database",
+        str(database),
+        "--expected-count",
+        "1",
+        "--expected-head",
+        imported["result"]["journal_fingerprint"],
+    )
+    assert code == ExitCode.SUCCESS
+    assert valid["result"]["integrity"]["is_valid"] is True
+
+    code, stale = _run(
+        capsys,
+        "inspect",
+        "--database",
+        str(database),
+        "--expected-count",
+        "2",
+    )
+    assert code == ExitCode.STORAGE_FAILURE
+    assert stale["result"]["integrity"]["issues"][0]["code"] == "journal.truncated"
+
+    code, invalid = _run(
+        capsys,
+        "inspect",
+        "--database",
+        str(database),
+        "--expected-head",
+        "not-a-fingerprint",
+    )
+    assert code == ExitCode.INVALID_REQUEST
+    assert invalid["error"]["code"] == "cli.expected_head"
