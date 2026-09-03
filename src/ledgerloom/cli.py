@@ -15,6 +15,7 @@ from decimal import Decimal, InvalidOperation
 from enum import IntEnum
 from pathlib import Path
 
+from ledgerloom.application import CatalogError, JournalCatalog
 from ledgerloom.domain import (
     BatchId,
     Diagnostic,
@@ -35,7 +36,6 @@ from ledgerloom.ingest import (
 )
 from ledgerloom.journal import JournalEntry, JournalIntegrityError, JournalStorageError
 from ledgerloom.reconciliation import (
-    RECONCILIATION_REPORT_V1,
     BatchReconciler,
     CandidateIndex,
     CandidateSelectionPolicy,
@@ -43,11 +43,9 @@ from ledgerloom.reconciliation import (
     ConflictStrategy,
     DecisionPolicy,
     MatchScorer,
-    ReconciliationReport,
     ScoringRule,
     build_reconciliation_report,
     build_reconciliation_report_document,
-    parse_reconciliation_report_document,
 )
 from ledgerloom.rules import (
     AmountRule,
@@ -57,7 +55,6 @@ from ledgerloom.rules import (
     TimeWindowRule,
 )
 from ledgerloom.serialization import (
-    LEDGER_BATCH_V1,
     canonical_json_bytes,
     canonical_json_text,
     domain_v1_registry,
@@ -148,33 +145,6 @@ def _read_all(journal: SQLiteJournal) -> tuple[JournalEntry, ...]:
         after_sequence = page[-1].sequence
 
 
-def _stored_objects(
-    entries: Sequence[JournalEntry],
-) -> tuple[tuple[LedgerBatch, ...], tuple[ReconciliationReport, ...]]:
-    registry = domain_v1_registry()
-    batches: list[LedgerBatch] = []
-    reports: list[ReconciliationReport] = []
-    for entry in entries:
-        if entry.document.schema == LEDGER_BATCH_V1:
-            value = registry.decode(entry.document)
-            assert isinstance(value, LedgerBatch)
-            batches.append(value)
-        elif entry.document.schema == RECONCILIATION_REPORT_V1:
-            reports.append(
-                parse_reconciliation_report_document(
-                    entry.document.content,
-                    expected_fingerprint=entry.document.fingerprint,
-                )
-            )
-    return tuple(batches), tuple(reports)
-
-
-def _known_batch_ids(
-    batches: tuple[LedgerBatch, ...], reports: tuple[ReconciliationReport, ...]
-) -> set[BatchId]:
-    return {item.batch_id for item in batches} | {item.batch_id for item in reports}
-
-
 def _entry_id(source_id: SourceId, record_id: object) -> EntryId:
     identity = f"{source_id}\0{record_id}".encode()
     return EntryId(f"entry-{hashlib.sha256(identity).hexdigest()}")
@@ -221,16 +191,16 @@ def _run_import(arguments: argparse.Namespace) -> tuple[dict[str, object], ExitC
 
     with SQLiteJournal(arguments.database) as journal:
         entries = _read_all(journal)
-        stored_batches, reports = _stored_objects(entries)
-        if batch_id in _known_batch_ids(stored_batches, reports):
+        catalog = JournalCatalog.from_entries(entries)
+        if catalog.contains_batch(batch_id):
             raise _CliError(
                 "cli.batch_exists", "$.batch", "batch identifier already exists"
             )
         existing_source_keys = {
-            entry.source_key for batch in stored_batches for entry in batch.entries
+            entry.source_key for batch in catalog.batches for entry in batch.entries
         }
         existing_entry_ids = {
-            entry.entry_id for batch in stored_batches for entry in batch.entries
+            entry.entry_id for batch in catalog.batches for entry in batch.entries
         }
 
         try:
@@ -361,13 +331,13 @@ def _run_reconcile(arguments: argparse.Namespace) -> tuple[dict[str, object], Ex
     reconciler = _default_reconciler(arguments)
     with SQLiteJournal(arguments.database, mode=SQLiteJournalMode.OPEN) as journal:
         entries = _read_all(journal)
-        batches, reports = _stored_objects(entries)
-        if result_batch_id in _known_batch_ids(batches, reports):
+        catalog = JournalCatalog.from_entries(entries)
+        if catalog.contains_batch(result_batch_id):
             raise _CliError(
                 "cli.batch_exists", "$.batch", "batch identifier already exists"
             )
         anchor_batch = next(
-            (item for item in batches if item.batch_id == anchor_batch_id), None
+            (item for item in catalog.batches if item.batch_id == anchor_batch_id), None
         )
         if anchor_batch is None:
             raise _CliError(
@@ -384,7 +354,7 @@ def _run_reconcile(arguments: argparse.Namespace) -> tuple[dict[str, object], Ex
             )
         candidates = tuple(
             entry
-            for batch in batches
+            for batch in catalog.batches
             if batch.batch_id != anchor_batch.batch_id
             for entry in batch.entries
         )
@@ -554,6 +524,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         _emit(_error_payload(command, error))
         return int(error.exit_code)
     except JournalIntegrityError as error:
+        _emit(_error_payload(command, error))
+        return int(ExitCode.STORAGE_FAILURE)
+    except CatalogError as error:
         _emit(_error_payload(command, error))
         return int(ExitCode.STORAGE_FAILURE)
     except JournalStorageError as error:

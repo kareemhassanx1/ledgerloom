@@ -6,6 +6,7 @@ import sys
 import pytest
 
 from ledgerloom.cli import ExitCode, main
+from ledgerloom.serialization import SchemaDocument, SchemaRef
 from ledgerloom.storage import SQLiteJournal
 
 
@@ -324,3 +325,37 @@ def test_inspect_reports_metadata_corruption_without_repairing_it(tmp_path, caps
         assert connection.execute(
             "SELECT entry_count FROM ledgerloom_journal_metadata WHERE singleton = 1"
         ).fetchone() == (2,)
+
+
+def test_import_fails_closed_for_a_future_known_schema(tmp_path, capsys) -> None:
+    database = tmp_path / "future.db"
+    source = tmp_path / "source.csv"
+    _write_csv(
+        source,
+        record_id="bank-1",
+        occurred_at="2026-09-02T12:00:00Z",
+        reference="invoice-1",
+    )
+    future = SchemaDocument.build(
+        SchemaRef.parse("ledgerloom.ledger_batch", "2.0"),
+        {"batch_id": "future"},
+    )
+    with SQLiteJournal(database) as journal:
+        journal.append(future)
+
+    code, payload = _run(
+        capsys,
+        "import",
+        str(source),
+        "--database",
+        str(database),
+        "--source",
+        "bank",
+        "--batch",
+        "future",
+    )
+
+    assert code == ExitCode.STORAGE_FAILURE
+    assert payload["error"]["code"] == "catalog.schema_version_unsupported"
+    with SQLiteJournal(database) as journal:
+        assert len(journal) == 1
