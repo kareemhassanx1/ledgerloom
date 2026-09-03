@@ -310,7 +310,7 @@ def test_inspect_reports_metadata_corruption_without_repairing_it(tmp_path, caps
 
     assert code == ExitCode.STORAGE_FAILURE
     assert payload["ok"] is True
-    assert payload["result"]["events"] == []
+    assert [item["sequence"] for item in payload["result"]["events"]] == [1]
     assert payload["result"]["integrity"] == {
         "is_valid": False,
         "issues": [

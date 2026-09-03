@@ -77,6 +77,56 @@ def test_read_only_mode_verifies_existing_data_and_rejects_writes(tmp_path):
     assert captured.value.code == "journal.storage_read_only"
 
 
+def test_inspection_snapshot_loads_a_large_journal_once(tmp_path, monkeypatch):
+    path = tmp_path / "snapshot.sqlite3"
+    with SQLiteJournal(path, max_read_limit=1) as journal:
+        journal.append_many(tuple(event(f"txn-{index}") for index in range(3)))
+        calls = 0
+        original = journal._load_snapshot
+
+        def counted_load():
+            nonlocal calls
+            calls += 1
+            return original()
+
+        monkeypatch.setattr(journal, "_load_snapshot", counted_load)
+        snapshot = journal.inspect_snapshot()
+
+    assert calls == 1
+    assert tuple(item.sequence for item in snapshot.verified_entries) == (1, 2, 3)
+    assert snapshot.integrity.is_valid
+
+
+def test_inspection_snapshot_returns_the_verified_prefix(tmp_path):
+    path = tmp_path / "prefix.sqlite3"
+    with SQLiteJournal(path) as journal:
+        first, second = journal.append_many((event("txn-1"), event("txn-2")))
+
+    wrong_previous = type(first.fingerprint).from_bytes(b"different predecessor")
+    tampered = type(second).create(2, second.document, wrong_previous)
+
+    with sqlite3.connect(path) as connection:
+        connection.execute(
+            """
+            UPDATE ledgerloom_journal_entries
+            SET previous_fingerprint = ?, fingerprint = ?
+            WHERE sequence = 2
+            """,
+            (str(wrong_previous), str(tampered.fingerprint)),
+        )
+
+    with SQLiteJournal(
+        path,
+        mode=SQLiteJournalMode.READ_ONLY,
+        verify_on_open=False,
+    ) as journal:
+        snapshot = journal.inspect_snapshot()
+
+    assert snapshot.verified_entries == (first,)
+    assert snapshot.integrity.valid_entries == 1
+    assert snapshot.integrity.issues[0].sequence == 2
+
+
 def test_only_read_only_mode_can_disable_eager_verification(tmp_path):
     path = tmp_path / "unsafe-open.sqlite3"
     with SQLiteJournal(path):

@@ -25,6 +25,7 @@ from ledgerloom.serialization.errors import SerializationError
 from ledgerloom.serialization.fingerprints import ContentFingerprint
 from ledgerloom.serialization.schema import SchemaDocument
 from ledgerloom.storage.errors import StorageError
+from ledgerloom.storage.snapshots import StoredJournalSnapshot
 
 SQLITE_STORAGE_SCHEMA_VERSION = 1
 _FORMAT_VERSION = 1
@@ -541,21 +542,34 @@ class SQLiteJournal:
     ) -> JournalIntegrityReport:
         """Inspect the durable journal and optional external recovery expectations."""
 
+        return self.inspect_snapshot(
+            expected_count=expected_count,
+            expected_head=expected_head,
+        ).integrity
+
+    def inspect_snapshot(
+        self,
+        *,
+        expected_count: int | None = None,
+        expected_head: ContentFingerprint | None = None,
+    ) -> StoredJournalSnapshot:
+        """Read entries and integrity metadata from one consistent transaction."""
+
         try:
             with self._lock, self._transaction(write=False):
                 entries, metadata = self._load_snapshot()
-                internal = inspect_journal_entries(
+                report = inspect_journal_entries(
                     entries,
                     expected_count=metadata[0],
                     expected_head=metadata[1],
                 )
-                if not internal.is_valid or (expected_count is None and expected_head is None):
-                    return internal
-                return inspect_journal_entries(
-                    entries,
-                    expected_count=expected_count,
-                    expected_head=expected_head,
-                )
+                if report.is_valid and (expected_count is not None or expected_head is not None):
+                    report = inspect_journal_entries(
+                        entries,
+                        expected_count=expected_count,
+                        expected_head=expected_head,
+                    )
+                return StoredJournalSnapshot(entries[: report.valid_entries], report)
         except sqlite3.Error as error:
             raise self._storage_error(error) from error
 

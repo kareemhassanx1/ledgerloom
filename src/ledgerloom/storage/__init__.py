@@ -1,6 +1,7 @@
 """Durable local persistence adapters."""
 
 from ledgerloom.storage.errors import StorageError
+from ledgerloom.storage.snapshots import StoredJournalSnapshot
 from ledgerloom.storage.sqlite import (
     SQLITE_STORAGE_SCHEMA_VERSION,
     SqliteDatabase,
@@ -14,4 +15,5 @@ __all__ = [
     "SQLiteJournalMode",
     "SqliteDatabase",
     "StorageError",
+    "StoredJournalSnapshot",
 ]

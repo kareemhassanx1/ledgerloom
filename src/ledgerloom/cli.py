@@ -35,7 +35,7 @@ from ledgerloom.ingest import (
     SourceRecordMapper,
     reject_duplicate_source_records,
 )
-from ledgerloom.journal import JournalEntry, JournalIntegrityError, JournalStorageError
+from ledgerloom.journal import JournalIntegrityError, JournalStorageError
 from ledgerloom.reconciliation import (
     BatchReconciler,
     CandidateIndex,
@@ -133,17 +133,6 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _read_all(journal: SQLiteJournal) -> tuple[JournalEntry, ...]:
-    entries: list[JournalEntry] = []
-    after_sequence = 0
-    while True:
-        page = journal.read(after_sequence=after_sequence)
-        if not page:
-            return tuple(entries)
-        entries.extend(page)
-        after_sequence = page[-1].sequence
-
-
 def _entry_id(source_id: SourceId, record_id: object) -> EntryId:
     identity = f"{source_id}\0{record_id}".encode()
     return EntryId(f"entry-{hashlib.sha256(identity).hexdigest()}")
@@ -189,7 +178,7 @@ def _run_import(arguments: argparse.Namespace) -> tuple[dict[str, object], ExitC
     )
 
     with SQLiteJournal(arguments.database) as journal:
-        entries = _read_all(journal)
+        entries = journal.inspect_snapshot().require_valid()
         catalog = JournalCatalog.from_entries(entries)
         if catalog.contains_batch(batch_id):
             raise _CliError(
@@ -329,7 +318,7 @@ def _run_reconcile(arguments: argparse.Namespace) -> tuple[dict[str, object], Ex
     result_batch_id = BatchId(arguments.batch)
     reconciler = _default_reconciler(arguments)
     with SQLiteJournal(arguments.database, mode=SQLiteJournalMode.OPEN) as journal:
-        entries = _read_all(journal)
+        entries = journal.inspect_snapshot().require_valid()
         catalog = JournalCatalog.from_entries(entries)
         if catalog.contains_batch(result_batch_id):
             raise _CliError(
@@ -392,8 +381,9 @@ def _run_inspect(arguments: argparse.Namespace) -> tuple[dict[str, object], Exit
         mode=SQLiteJournalMode.READ_ONLY,
         verify_on_open=False,
     ) as journal:
-        report = journal.integrity_report()
-        entries = _read_all(journal) if report.is_valid else ()
+        snapshot = journal.inspect_snapshot()
+        report = snapshot.integrity
+        entries = snapshot.verified_entries
     events = [
         {
             "document_fingerprint": str(entry.document.fingerprint),
@@ -429,7 +419,7 @@ def _run_inspect(arguments: argparse.Namespace) -> tuple[dict[str, object], Exit
 def _run_export(arguments: argparse.Namespace) -> tuple[dict[str, object], ExitCode]:
     database = arguments.database.resolve()
     with SQLiteJournal(arguments.database, mode=SQLiteJournalMode.READ_ONLY) as journal:
-        entries = _read_all(journal)
+        entries = journal.inspect_snapshot().require_valid()
     protected = (
         database,
         Path(f"{database}-wal"),
