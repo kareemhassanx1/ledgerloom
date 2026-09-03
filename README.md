@@ -10,7 +10,7 @@ run locally and reproduce later. Network access is never required by the core
 engine, decimal amounts remain exact, and every state transition is represented
 as immutable domain data.
 
-## Planned capabilities
+## Capabilities
 
 - Strict value objects for identifiers, money, timestamps, source records, and ledger entries.
 - Ordered ledger batches that preserve accepted entries and structured rejection diagnostics.
@@ -19,8 +19,28 @@ as immutable domain data.
 - Configurable exact, tolerance, date-window, and composite match rules.
 - Explainable reconciliation decisions and conflict resolution.
 - Streaming CSV and JSON Lines ingestion with structured validation errors.
-- SQLite journal persistence and a command-line interface for repeatable batch runs.
+- SQLite journal persistence with explicit create, writable-open, and read-only modes.
+- A command-line interface for repeatable import, reconciliation, inspection, and export runs.
 - Reports that distinguish matched, unmatched, ambiguous, and invalid records.
+
+## Quick start
+
+After installing the package, import two batches into one journal and reconcile
+one against the other:
+
+```shell
+ledgerloom import bank.csv --database ledgerloom.db --source bank --batch bank-2026-09
+ledgerloom import processor.jsonl --database ledgerloom.db --source processor --batch processor-2026-09
+ledgerloom reconcile --database ledgerloom.db --anchor-batch bank-2026-09 --batch reconciliation-2026-09
+ledgerloom inspect --database ledgerloom.db
+ledgerloom export --database ledgerloom.db --output audit.jsonl
+```
+
+Every command emits one canonical JSON result. Inspection and export open an
+existing journal read-only, so they neither create a missing database nor repair
+one that fails verification. See [Command-line workflows](docs/cli.md) for the
+complete behavior and [Operations and recovery](docs/operations.md) before
+automating backups or recovery checks.
 
 ## Development setup
 
@@ -34,7 +54,8 @@ python -m pytest
 ```
 
 The package uses a `src` layout. Public modules live below `src/ledgerloom`,
-and the test tree mirrors that structure.
+and the test tree mirrors that structure. See [Contributing](CONTRIBUTING.md) for
+the complete lint, type-check, coverage, and build gates.
 
 ## Design principles
 
@@ -51,30 +72,25 @@ and the test tree mirrors that structure.
 
 ## Status
 
-LedgerLoom is under active development. The current foundation provides immutable
-financial values, provenance-carrying records and batches, versioned canonical
-documents, and an in-memory append-only journal with sequence guards, bounded
-reads, truncation diagnostics, fingerprint-anchored replay, and named projections
-with deterministic resumable snapshots. It also provides structured three-valued
-matching evidence, guarded rule contracts, entry-scope safeguards, and complete
-`all`/`any`/`not` policy composition. Immutable candidate indexes narrow entries
-by account, exact or tolerant amount, reference, and inclusive time windows,
-while amount, reference, and time-window rules explain field-level matches.
-Integer-only weighted scoring retains every explanation, explicit margins keep
-tied or close candidates ambiguous, and conflict policies prevent two anchors
-from silently claiming the same entry. Deterministic batch workflows now connect
-those stages and produce verified summaries, structured per-candidate evidence,
-and privacy-conscious text reports. Input-aware reports join those decisions to
-ordered validation results, covering matched, unmatched, ambiguous, and invalid
-records without retaining rejected values. Streaming CSV and JSON Lines adapters
-map configurable schemas into source records,
-continue after row-level failures, enforce resource limits, detect duplicate
-source identities, and produce deterministic operational summaries. The current
-release includes durable SQLite journals with atomic multi-event appends,
-verified reopen behavior, recovery metadata, and optimistic concurrency guards.
-It also exposes import, reconcile, inspect, and export CLI workflows with
-canonical JSON results, documented exit codes, and restart-safe SQLite state.
-See [the command-line workflow guide](docs/cli.md) for examples and contracts.
+LedgerLoom is under active development, with the end-to-end local workflow now
+implemented. Imported batches and reconciliation reports use canonical,
+versioned documents in an append-only SQLite journal. Reopening verifies event
+bytes, hash-chain links, and independently committed count/head metadata before
+state is exposed. Read-only inspection captures rows and metadata in one SQLite
+transaction and can compare them with externally retained count/head anchors.
+
+Reconciliation is deterministic and explainable: candidate indexes, weighted
+rules, ambiguity thresholds, conflict policies, and structured reports all use
+stable ordering. Committed reports also reserve both sides of a matched pair, so
+later CLI runs cannot silently reuse an already matched entry. A typed journal
+catalog decodes supported application schemas, retains unrelated schema entries,
+and fails closed on unsupported versions of known schemas.
+
+Verified exports are written beside their destination and published atomically.
+They do not overwrite an existing file unless explicitly requested, and the CLI
+protects the database plus its SQLite sidecar files from being selected as an
+export target. Remaining planned hardening work is tracked in
+[the roadmap](docs/roadmap.md).
 
 ## License
 

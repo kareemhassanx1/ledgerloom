@@ -35,7 +35,9 @@ optimistic expected-sequence guard coordinates competing writers, while a
 configurable hard limit caps cursor-based reads. The SQLite adapter preserves
 those semantics across process restarts. It verifies stored documents, the full
 chain, and independently committed count and head metadata before every read or
-write instead of skipping damaged entries.
+write instead of skipping damaged entries. Its explicit create, writable-open,
+and read-only modes separate operations that may initialize or append from those
+that must leave storage unchanged.
 
 SQLite multi-document appends run inside one immediate transaction. The write
 lock is acquired before the current head is read, so the expected-sequence check,
@@ -45,12 +47,15 @@ a writer carrying a stale expected sequence receives the same conflict error as
 the in-memory journal.
 
 Integrity inspection reports the verified prefix and first broken sequence
-without requiring a successful read. Independently stored count and head values
-make a truncated but internally consistent prefix detectable. Replay accepts
-genesis or fingerprint-anchored segments, verifies and decodes the complete
-segment before invoking a reducer, and returns a cursor for the next segment.
-This keeps corruption and unknown schema versions from partially changing a
-projection.
+without requiring a successful read. The durable adapter reads rows and recovery
+metadata in one transaction and returns them as a `StoredJournalSnapshot`, so a
+CLI inspection cannot combine different database states. Independently stored
+count and head values make a truncated but internally consistent prefix
+detectable; optional external count/head anchors also detect an intact but stale
+database copy. Replay accepts genesis or fingerprint-anchored segments, verifies
+and decodes the complete segment before invoking a reducer, and returns a cursor
+for the next segment. This keeps corruption and unknown schema versions from
+partially changing a projection.
 
 Named projections combine a genesis state with a reducer and produce immutable
 checkpoints whose replay cursor binds the state to an exact journal history.
@@ -97,6 +102,12 @@ uniquely higher scoring selection; equal leaders remain conflicts. Score-based
 conflict resolution rejects mixed maximum-score scales rather than comparing
 unlike values.
 
+`ReconciliationClaims` extends the one-to-one rule across separate runs. It
+derives claims from matched pairs in already committed reports and reserves both
+the anchor and candidate. A claimed entry cannot later be submitted as an
+anchor, and a new selection of a claimed candidate becomes an explicit conflict
+that names the earlier owner instead of silently creating a second match.
+
 Batch reconciliation connects the candidate index, scorer, decision policy, and
 conflict policy without hiding their intermediate results. A batch owns a typed
 identifier and a canonical, conflict-free decision sequence. Structured reports
@@ -132,11 +143,34 @@ diagnostic counts without materializing the imported records.
   bytes, hash-chain links, and recovery metadata in a WAL-backed database. A
   reopened adapter verifies the committed history before exposing it.
 
+`SQLiteJournalMode.CREATE` can initialize a missing journal and permits appends.
+`SQLiteJournalMode.OPEN` requires an existing journal and permits appends, while
+`SQLiteJournalMode.READ_ONLY` requires an existing journal and asks SQLite to
+open it read-only. Only the read-only mode may defer eager verification so that
+diagnostic inspection can obtain a verified prefix from damaged storage without
+repairing or initializing it. Commit failures are rolled back before control is
+returned, leaving the same connection usable for later work.
+
+`ledgerloom.application`
+: Verified application-level discovery and export services. `JournalCatalog`
+  decodes ledger batches and reconciliation reports in journal order, enforces
+  batch identifier uniqueness across both types, and retains entries whose
+  schema names belong to another application. A known schema name with an
+  unsupported version fails closed instead of being mistaken for unrelated data.
+
+  The JSON Lines exporter verifies its input chain, writes and syncs a temporary
+  file beside the destination, and publishes it atomically. Non-forced publish
+  uses an exclusive link so a concurrently created destination is not
+  overwritten. Callers can mark database and sidecar paths as protected,
+  including alternate hard links to the same file.
+
 `ledgerloom.cli`
 : A thin command layer over the public application services. Commands emit one
   canonical JSON result envelope and use documented process exit codes. Import
   batches and reconciliation reports are appended to the same verified SQLite
-  journal, allowing inspect and export to operate without hidden process state.
+  journal. Reconciliation rebuilds the catalog and committed claims on each run;
+  inspection and export use read-only snapshots and operate without hidden
+  process state.
 
 ## Dependency rule
 

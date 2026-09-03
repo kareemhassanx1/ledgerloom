@@ -41,6 +41,25 @@ A conflict must have at least two claims on its disputed candidate: another
 conflict or a uniquely winning matched decision. Orphan conflict objects are
 rejected rather than published without a real competing party.
 
+## Claims across committed runs
+
+The conflict policy above resolves collisions inside one batch.
+`ReconciliationClaims` applies the same one-to-one constraint to reports already
+committed in a journal. `from_reports()` derives an immutable index from every
+matched pair and records both the anchor and selected candidate as participants.
+
+Before a later run, `require_available_anchors()` rejects an anchor that already
+participates in a committed match. After the ordinary batch workflow produces a
+report, `resolve()` changes a selection of an already claimed candidate into a
+conflict with reason `conflict.candidate_already_claimed`. The decision retains
+the disputed candidate as a contender and names the earlier anchor or anchors as
+competitors. Its selected candidate is cleared and the report summary is
+recomputed from the changed decisions.
+
+The CLI rebuilds this claim index from the journal catalog for every
+reconciliation command. Claims therefore survive process exits and database
+reopens; they are not an implicit in-memory lock.
+
 ## Structured report
 
 `build_reconciliation_report()` snapshots a verified batch without performing
@@ -87,7 +106,7 @@ dropping a failed or indeterminate rule.
 `ReconciliationReport.render_text()` provides a concise deterministic view for
 logs and manual inspection. It prints only identifiers, status and reason codes,
 scores, eligibility, contenders, and summary counts. It does not print monetary
-amounts, references, or the scalar facts inside rule evidence. A future CLI can
+amounts, references, or the scalar facts inside rule evidence. Applications can
 use the structured report directly or apply a different presentation policy.
 When present, the batch's policy snapshot is rendered before individual
 decisions so an inspected log includes its decision context.
@@ -132,6 +151,12 @@ identifier, an optional expected fingerprint, and every report invariant before
 returning typed immutable models. Changed content, an unexpected schema, or
 internally inconsistent counts fail instead of producing a partially trusted
 report.
+
+The CLI appends this document to the same journal as imported batches. On a
+later run, the typed application catalog decodes committed report documents in
+journal order so duplicate batch identifiers and cross-run claims can be checked
+before a new report is appended. An unsupported future version of the known
+report schema fails closed rather than being ignored.
 
 ## Example
 
@@ -179,5 +204,6 @@ print(report.summary.matched)
 print(report.render_text())
 ```
 
-Batch reports currently remain in memory. Later storage and export adapters can
-serialize their stable public fields without changing reconciliation behavior.
+For operational examples that persist and inspect these reports, see
+[Command-line workflows](cli.md). The lower-level batch APIs remain usable
+without SQLite when an application wants to own persistence itself.

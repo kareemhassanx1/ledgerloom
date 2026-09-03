@@ -29,11 +29,17 @@ tested library surface.
 
 - [x] Streaming CSV and JSON Lines importers.
 - [x] Schema mapping and row-level validation diagnostics.
-- [x] SQLite storage with transactional batch writes.
+- [x] SQLite storage with transactional writes and explicit open modes.
 - [x] Command-line workflows for import, reconcile, inspect, and export.
+- [x] Atomic verified exports with protected storage destinations.
+- [x] External count/head recovery anchors for consistent inspection snapshots.
 
 ## Hardening
 
-- End-to-end fixtures covering partial failure and restart behavior.
-- Property-style invariant tests and performance benchmarks.
-- API reference, tutorials, and operational guidance.
+- [x] End-to-end fixtures covering partial import and restart behavior.
+- [x] Fail-closed application schema discovery and cross-run match claims.
+- [x] Linux CI gates for linting, source type checks, coverage, and wheel builds.
+- [x] Backup, inspection, export, and recovery guidance.
+- [ ] Property-style invariant tests.
+- [ ] Repeatable performance benchmarks for large journals and imports.
+- [ ] Complete public API reference and task-focused tutorials.
