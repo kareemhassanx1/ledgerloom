@@ -32,11 +32,16 @@ from ledgerloom.domain import (
 from ledgerloom.domain.errors import LedgerLoomError
 from ledgerloom.ingest import (
     CsvImporter,
+    ImportRowResult,
     JsonlImporter,
     SourceRecordMapper,
     reject_duplicate_source_records,
 )
-from ledgerloom.journal import JournalIntegrityError, JournalStorageError
+from ledgerloom.journal import (
+    JournalConflictError,
+    JournalIntegrityError,
+    JournalStorageError,
+)
 from ledgerloom.reconciliation import (
     BatchReconciler,
     CandidateIndex,
@@ -74,6 +79,10 @@ class ExitCode(IntEnum):
     NOT_FOUND = 3
     STORAGE_FAILURE = 4
     PARTIAL_IMPORT = 5
+    CONFLICT = 6
+
+
+DEFAULT_MAX_IMPORT_RECORDS = 100_000
 
 
 @dataclass(frozen=True, slots=True)
@@ -92,6 +101,16 @@ class _ArgumentParser(argparse.ArgumentParser):
         raise _CliError("cli.usage", "$.arguments", message)
 
 
+def _positive_record_limit(value: str) -> int:
+    try:
+        limit = int(value)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError("must be a positive integer") from error
+    if limit < 1:
+        raise argparse.ArgumentTypeError("must be a positive integer")
+    return limit
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = _ArgumentParser(prog="ledgerloom", description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
@@ -103,6 +122,16 @@ def _build_parser() -> argparse.ArgumentParser:
     import_parser.add_argument("--batch", required=True)
     import_parser.add_argument("--format", choices=("csv", "jsonl"))
     import_parser.add_argument("--delimiter", default=",")
+    import_parser.add_argument(
+        "--max-records",
+        type=_positive_record_limit,
+        default=DEFAULT_MAX_IMPORT_RECORDS,
+        metavar="COUNT",
+        help=(
+            "reject inputs containing more than COUNT records "
+            f"(default: {DEFAULT_MAX_IMPORT_RECORDS})"
+        ),
+    )
     import_parser.set_defaults(handler=_run_import)
 
     reconcile_parser = commands.add_parser(
@@ -197,7 +226,15 @@ def _run_import(arguments: argparse.Namespace) -> tuple[dict[str, object], ExitC
 
         try:
             with arguments.input.open("r", encoding="utf-8", newline="") as stream:
-                rows = tuple(reject_duplicate_source_records(importer.import_rows(stream)))
+                rows: list[ImportRowResult] = []
+                for row in reject_duplicate_source_records(importer.import_rows(stream)):
+                    if len(rows) >= arguments.max_records:
+                        raise _CliError(
+                            "cli.import_record_limit",
+                            "$.input",
+                            "input exceeds the configured maximum record count",
+                        )
+                    rows.append(row)
         except UnicodeError as error:
             raise _CliError(
                 "cli.input_encoding", "$.input", "input must be valid UTF-8 text"
@@ -493,6 +530,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     except _CliError as error:
         _emit(_error_payload(command, error))
         return int(error.exit_code)
+    except JournalConflictError as error:
+        _emit(_error_payload(command, error))
+        return int(ExitCode.CONFLICT)
     except JournalIntegrityError as error:
         _emit(_error_payload(command, error))
         return int(ExitCode.STORAGE_FAILURE)

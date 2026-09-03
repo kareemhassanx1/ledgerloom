@@ -7,6 +7,7 @@ import pytest
 
 from ledgerloom.application import JournalCatalog
 from ledgerloom.cli import ExitCode, main
+from ledgerloom.journal import JournalConflictError
 from ledgerloom.reconciliation import DecisionStatus
 from ledgerloom.serialization import SchemaDocument, SchemaRef
 from ledgerloom.storage import SQLiteJournal
@@ -497,3 +498,143 @@ def test_inspect_compares_external_recovery_anchors(tmp_path, capsys) -> None:
     )
     assert code == ExitCode.INVALID_REQUEST
     assert invalid["error"]["code"] == "cli.expected_head"
+
+
+def test_append_conflict_has_a_distinct_stable_exit_code(
+    tmp_path, capsys, monkeypatch
+) -> None:
+    database = tmp_path / "conflict.db"
+    source = tmp_path / "source.csv"
+    _write_csv(
+        source,
+        record_id="bank-1",
+        occurred_at="2026-09-02T12:00:00Z",
+        reference="invoice-1",
+    )
+
+    def reject_stale_append(*_args, **_kwargs):
+        raise JournalConflictError(
+            code="journal.sequence_conflict",
+            path="$.expected_sequence",
+            message="expected sequence 1, current sequence is 2",
+        )
+
+    monkeypatch.setattr(SQLiteJournal, "append", reject_stale_append)
+
+    code, payload = _run(
+        capsys,
+        "import",
+        str(source),
+        "--database",
+        str(database),
+        "--source",
+        "bank",
+        "--batch",
+        "import-bank",
+    )
+
+    assert code == ExitCode.CONFLICT
+    assert payload == {
+        "command": "import",
+        "error": {
+            "code": "journal.sequence_conflict",
+            "message": "expected sequence 1, current sequence is 2",
+            "path": "$.expected_sequence",
+        },
+        "ok": False,
+    }
+
+
+def test_import_record_limit_rejects_before_append(tmp_path, capsys) -> None:
+    database = tmp_path / "limited.db"
+    source = tmp_path / "source.csv"
+    source.write_text(
+        "record_id,account_id,amount,currency,occurred_at,reference\n"
+        "bank-1,cash,10.00,USD,2026-09-02T12:00:00Z,invoice-1\n"
+        "bank-2,cash,20.00,USD,2026-09-02T12:01:00Z,invoice-2\n",
+        encoding="utf-8",
+    )
+
+    code, payload = _run(
+        capsys,
+        "import",
+        str(source),
+        "--database",
+        str(database),
+        "--source",
+        "bank",
+        "--batch",
+        "import-bank",
+        "--max-records",
+        "1",
+    )
+
+    assert code == ExitCode.INVALID_REQUEST
+    assert payload["error"] == {
+        "code": "cli.import_record_limit",
+        "message": "input exceeds the configured maximum record count",
+        "path": "$.input",
+    }
+    with SQLiteJournal(database) as journal:
+        assert len(journal) == 0
+
+
+def test_import_accepts_the_exact_configured_record_limit(tmp_path, capsys) -> None:
+    database = tmp_path / "exact-limit.db"
+    source = tmp_path / "source.csv"
+    source.write_text(
+        "record_id,account_id,amount,currency,occurred_at,reference\n"
+        "bank-1,cash,10.00,USD,2026-09-02T12:00:00Z,invoice-1\n"
+        "bank-2,cash,20.00,USD,2026-09-02T12:01:00Z,invoice-2\n",
+        encoding="utf-8",
+    )
+
+    code, payload = _run(
+        capsys,
+        "import",
+        str(source),
+        "--database",
+        str(database),
+        "--source",
+        "bank",
+        "--batch",
+        "import-bank",
+        "--max-records",
+        "2",
+    )
+
+    assert code == ExitCode.SUCCESS
+    assert payload["result"]["accepted"] == 2
+    assert payload["result"]["total"] == 2
+
+
+@pytest.mark.parametrize("limit", ("0", "-1", "not-an-integer"))
+def test_import_record_limit_must_be_a_positive_integer(
+    tmp_path, capsys, limit
+) -> None:
+    database = tmp_path / "invalid-limit.db"
+    source = tmp_path / "source.csv"
+    _write_csv(
+        source,
+        record_id="bank-1",
+        occurred_at="2026-09-02T12:00:00Z",
+        reference="invoice-1",
+    )
+
+    code, payload = _run(
+        capsys,
+        "import",
+        str(source),
+        "--database",
+        str(database),
+        "--source",
+        "bank",
+        "--batch",
+        "import-bank",
+        "--max-records",
+        limit,
+    )
+
+    assert code == ExitCode.INVALID_REQUEST
+    assert payload["error"]["code"] == "cli.usage"
+    assert not database.exists()
