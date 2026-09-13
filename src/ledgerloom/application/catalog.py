@@ -10,6 +10,8 @@ from ledgerloom.domain import BatchId, LedgerBatch
 from ledgerloom.journal import JournalEntry, verify_journal_entries
 from ledgerloom.reconciliation import (
     RECONCILIATION_REPORT_V1,
+    ReconciliationClaimError,
+    ReconciliationClaims,
     ReconciliationReport,
     parse_reconciliation_report_document,
 )
@@ -64,6 +66,10 @@ class JournalCatalog:
                 "$.entries",
                 "journal batch identifiers must be unique across stored objects",
             )
+        try:
+            ReconciliationClaims.from_reports(self.reports)
+        except ReconciliationClaimError as error:
+            raise CatalogError("catalog.claim_history", error.path, error.message) from error
 
     @classmethod
     def from_entries(cls, entries: Iterable[JournalEntry]) -> JournalCatalog:

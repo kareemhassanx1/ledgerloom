@@ -89,9 +89,24 @@ class ReconciliationClaims:
                     path=f"$.reports[{index}]",
                     message="reports must contain only ReconciliationReport values",
                 )
-            for anchor_id, candidate_id in report.matched_pairs:
-                owners.setdefault(anchor_id, set()).add(anchor_id)
-                owners.setdefault(candidate_id, set()).add(anchor_id)
+            for decision_index, decision in enumerate(report.decisions):
+                if decision.status is not DecisionStatus.MATCHED:
+                    continue
+                candidate_id = decision.selected_candidate_id
+                assert candidate_id is not None
+                for field, entry_id in (
+                    ("anchor_id", decision.anchor_id),
+                    ("selected_candidate_id", candidate_id),
+                ):
+                    if entry_id in owners:
+                        raise ReconciliationClaimError(
+                            code="claim.history_entry_reused",
+                            path=f"$.reports[{index}].decisions[{decision_index}].{field}",
+                            message=(
+                                f"entry {entry_id} participates in more than one committed match"
+                            ),
+                        )
+                    owners[entry_id] = {decision.anchor_id}
         return cls(
             tuple(
                 EntryClaim(
