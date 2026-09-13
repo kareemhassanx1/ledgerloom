@@ -86,6 +86,12 @@ later CLI runs cannot silently reuse an already matched entry. A typed journal
 catalog decodes supported application schemas, retains unrelated schema entries,
 and fails closed on unsupported versions of known schemas.
 
+Catalog replay also rejects double settlement across committed reports and
+report references to entries that were not imported earlier in the journal.
+These application checks supplement the hash-chain verification: a correctly
+hashed document can still contain an unusable reconciliation history. Direct
+report resolution enforces the same settled-anchor guard as the CLI.
+
 Verified exports are written beside their destination and published atomically.
 They do not overwrite an existing file unless explicitly requested, and the CLI
 protects the database plus its SQLite sidecar files from being selected as an

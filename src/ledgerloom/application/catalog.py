@@ -6,7 +6,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 
 from ledgerloom.application.errors import CatalogError
-from ledgerloom.domain import BatchId, LedgerBatch
+from ledgerloom.domain import BatchId, EntryId, LedgerBatch
 from ledgerloom.journal import JournalEntry, verify_journal_entries
 from ledgerloom.reconciliation import (
     RECONCILIATION_REPORT_V1,
@@ -87,22 +87,50 @@ class JournalCatalog:
         batches: list[LedgerBatch] = []
         reports: list[ReconciliationReport] = []
         unrecognized: list[JournalEntry] = []
+        imported_entry_ids: set[EntryId] = set()
         for index, entry in enumerate(materialized):
             cls._require_supported_version(entry.document.schema, index=index)
             if entry.document.schema == LEDGER_BATCH_V1:
                 value = registry.decode(entry.document)
                 assert isinstance(value, LedgerBatch)
                 batches.append(value)
+                imported_entry_ids.update(item.entry_id for item in value.entries)
             elif entry.document.schema == RECONCILIATION_REPORT_V1:
-                reports.append(
-                    parse_reconciliation_report_document(
-                        entry.document.content,
-                        expected_fingerprint=entry.document.fingerprint,
-                    )
+                report = parse_reconciliation_report_document(
+                    entry.document.content,
+                    expected_fingerprint=entry.document.fingerprint,
                 )
+                cls._require_imported_entries(report, imported_entry_ids, index=index)
+                reports.append(report)
             else:
                 unrecognized.append(entry)
         return cls(tuple(batches), tuple(reports), tuple(unrecognized))
+
+    @staticmethod
+    def _require_imported_entries(
+        report: ReconciliationReport,
+        imported: set[EntryId],
+        *,
+        index: int,
+    ) -> None:
+        """A report may refer only to entries imported before that journal event."""
+        for decision_index, decision in enumerate(report.decisions):
+            references = [("anchor_id", decision.anchor_id)]
+            references.extend(
+                (f"candidates[{candidate_index}].candidate_id", candidate.candidate_id)
+                for candidate_index, candidate in enumerate(decision.candidates)
+            )
+            references.extend(
+                (f"competing_anchor_ids[{peer_index}]", entry_id)
+                for peer_index, entry_id in enumerate(decision.competing_anchor_ids)
+            )
+            for field, entry_id in references:
+                if entry_id not in imported:
+                    raise CatalogError(
+                        "catalog.report_entry_missing",
+                        f"$.entries[{index}].document.payload.decisions[{decision_index}].{field}",
+                        f"entry {entry_id} is not present in preceding imported batches",
+                    )
 
     @staticmethod
     def _require_supported_version(schema: SchemaRef, *, index: int) -> None:
