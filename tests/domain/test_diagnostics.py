@@ -6,9 +6,7 @@ from ledgerloom.domain.diagnostics import Diagnostic, DiagnosticSeverity, Valida
 from ledgerloom.domain.errors import DomainValidationError
 
 
-def make_diagnostic(
-    *, severity: DiagnosticSeverity = DiagnosticSeverity.ERROR
-) -> Diagnostic:
+def make_diagnostic(*, severity: DiagnosticSeverity = DiagnosticSeverity.ERROR) -> Diagnostic:
     return Diagnostic(
         code="record.amount_invalid",
         field="amount",

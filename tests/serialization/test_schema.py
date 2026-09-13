@@ -27,9 +27,7 @@ def decode_widget(payload):
     name = payload.get("name")
     enabled = payload.get("enabled", True)
     if not isinstance(name, str):
-        raise SerializationError(
-            code="widget.name", path="$.payload.name", message="must be text"
-        )
+        raise SerializationError(code="widget.name", path="$.payload.name", message="must be text")
     if not isinstance(enabled, bool):
         raise SerializationError(
             code="widget.enabled", path="$.payload.enabled", message="must be boolean"
@@ -129,8 +127,7 @@ def test_document_build_produces_exact_envelope_and_fingerprint():
     document = SchemaDocument.build(ref, {"name": "alpha", "enabled": True})
 
     assert bytes(document) == (
-        b'{"payload":{"enabled":true,"name":"alpha"},'
-        b'"schema":"example.widget","version":"1.0"}'
+        b'{"payload":{"enabled":true,"name":"alpha"},"schema":"example.widget","version":"1.0"}'
     )
     assert document.fingerprint == ContentFingerprint.from_bytes(document.content)
 
@@ -171,7 +168,7 @@ def test_document_parse_rejects_mismatched_expected_fingerprint():
 @pytest.mark.parametrize(
     "document,code",
     [
-        (b'[]', "schema.envelope_type"),
+        (b"[]", "schema.envelope_type"),
         (b'{"payload":{},"schema":"example.widget"}', "schema.envelope_fields"),
         (
             b'{"extra":0,"payload":{},"schema":"example.widget","version":"1.0"}',
@@ -358,4 +355,3 @@ def test_registry_detects_decoder_returning_wrong_type():
         registry.decode(document)
 
     assert captured.value.code == "schema.decoder_result_type"
-

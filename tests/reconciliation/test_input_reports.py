@@ -120,19 +120,13 @@ def test_input_report_integrates_all_four_operational_statuses(
 
 def test_conflict_is_actionable_as_ambiguous_without_losing_detail(mixed_batch):
     conflict_entries = tuple(
-        decision.anchor
-        for decision in mixed_batch.decisions
-        if decision.status.value == "conflict"
+        decision.anchor for decision in mixed_batch.decisions if decision.status.value == "conflict"
     )
-    input_batch = _input_batch(
-        *(ValidationResult.success(entry) for entry in conflict_entries)
-    )
+    input_batch = _input_batch(*(ValidationResult.success(entry) for entry in conflict_entries))
     conflict_batch = replace(
         mixed_batch,
         decisions=tuple(
-            decision
-            for decision in mixed_batch.decisions
-            if decision.status.value == "conflict"
+            decision for decision in mixed_batch.decisions if decision.status.value == "conflict"
         ),
         selection_traces=tuple(
             trace
@@ -143,19 +137,10 @@ def test_conflict_is_actionable_as_ambiguous_without_losing_detail(mixed_batch):
 
     report = build_input_reconciliation_report(input_batch, conflict_batch)
 
-    assert all(
-        item.status is ReconciliationRecordStatus.AMBIGUOUS
-        for item in report.outcomes
-    )
+    assert all(item.status is ReconciliationRecordStatus.AMBIGUOUS for item in report.outcomes)
     assert all(item.decision is not None for item in report.outcomes)
-    assert {item.decision.status.value for item in report.outcomes if item.decision} == {
-        "conflict"
-    }
-    assert all(
-        item.decision.competing_anchor_ids
-        for item in report.outcomes
-        if item.decision
-    )
+    assert {item.decision.status.value for item in report.outcomes if item.decision} == {"conflict"}
+    assert all(item.decision.competing_anchor_ids for item in report.outcomes if item.decision)
 
 
 def test_all_invalid_batch_produces_a_complete_report_without_reconciliation():

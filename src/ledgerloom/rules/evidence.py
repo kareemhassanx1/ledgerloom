@@ -180,7 +180,5 @@ class RuleEvidence:
         """Return every nested item that explicitly rejected the match."""
 
         return tuple(
-            evidence
-            for evidence in self.walk()
-            if evidence.verdict is MatchVerdict.NO_MATCH
+            evidence for evidence in self.walk() if evidence.verdict is MatchVerdict.NO_MATCH
         )

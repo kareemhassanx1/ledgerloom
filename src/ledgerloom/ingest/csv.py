@@ -13,11 +13,7 @@ from ledgerloom.ingest.results import ImportLocation, ImportRowResult
 
 
 def _validate_delimiter(value: object) -> str:
-    if (
-        not isinstance(value, str)
-        or len(value) != 1
-        or value in {'"', "\r", "\n"}
-    ):
+    if not isinstance(value, str) or len(value) != 1 or value in {'"', "\r", "\n"}:
         raise IngestError(
             code="ingest.csv_delimiter",
             path="$.csv.delimiter",
@@ -170,10 +166,7 @@ class CsvImporter:
                 message="CSV header exceeds the configured column limit",
             )
         if any(
-            not item
-            or item != item.strip()
-            or not item.isprintable()
-            or len(item) > 128
+            not item or item != item.strip() or not item.isprintable() or len(item) > 128
             for item in header
         ):
             raise IngestError(

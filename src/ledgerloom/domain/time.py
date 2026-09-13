@@ -153,4 +153,3 @@ class TimeRange:
         if not self.overlaps(other):
             return None
         return TimeRange(max(self.start, other.start), min(self.end, other.end))
-

@@ -71,9 +71,7 @@ def test_existing_candidate_lookup_delegates_to_traced_selection():
         "require_reference": True,
     }
 
-    assert index.candidates_for(anchor, **options) == index.select_for(
-        anchor, **options
-    ).candidates
+    assert index.candidates_for(anchor, **options) == index.select_for(anchor, **options).candidates
 
 
 def test_indexes_account_amount_and_present_reference():
@@ -227,11 +225,14 @@ def test_candidates_for_missing_required_reference_is_empty():
     anchor = entry("anchor", reference=None)
     index = CandidateIndex((anchor, entry("candidate", reference=None)))
 
-    assert index.candidates_for(
-        anchor,
-        max_time_difference=timedelta(0),
-        require_reference=True,
-    ) == ()
+    assert (
+        index.candidates_for(
+            anchor,
+            max_time_difference=timedelta(0),
+            require_reference=True,
+        )
+        == ()
+    )
 
 
 def test_duplicate_entry_identifiers_are_rejected():

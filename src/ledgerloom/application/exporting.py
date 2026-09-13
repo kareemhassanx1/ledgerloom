@@ -68,14 +68,17 @@ def _require_safe_destination(output: Path, protected_paths: tuple[Path, ...]) -
 
 
 def _entry_line(entry: JournalEntry) -> bytes:
-    return canonical_json_bytes(
-        {
-            "document": loads_canonical_json(entry.document.content),
-            "document_fingerprint": str(entry.document.fingerprint),
-            "journal_fingerprint": str(entry.fingerprint),
-            "sequence": entry.sequence,
-        }
-    ) + b"\n"
+    return (
+        canonical_json_bytes(
+            {
+                "document": loads_canonical_json(entry.document.content),
+                "document_fingerprint": str(entry.document.fingerprint),
+                "journal_fingerprint": str(entry.fingerprint),
+                "sequence": entry.sequence,
+            }
+        )
+        + b"\n"
+    )
 
 
 def _publish(temporary: Path, output: Path, *, force: bool) -> None:
@@ -121,9 +124,7 @@ def export_journal_jsonl(
             "$.force",
             "force must be a boolean",
         )
-    if isinstance(protected_paths, str | bytes) or not isinstance(
-        protected_paths, Iterable
-    ):
+    if isinstance(protected_paths, str | bytes) or not isinstance(protected_paths, Iterable):
         raise ExportError(
             "export.protected_paths_type",
             "$.protected_paths",
@@ -179,4 +180,3 @@ def export_journal_jsonl(
 
 
 __all__ = ["JournalExportSummary", "export_journal_jsonl"]
-

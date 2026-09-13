@@ -28,9 +28,7 @@ def test_report_summarizes_every_batch_outcome(mixed_batch):
         evaluated_candidates=5,
         coverage_basis_points=2_000,
     )
-    assert report.matched_pairs == (
-        (EntryId("anchor-match"), EntryId("candidate-match")),
-    )
+    assert report.matched_pairs == ((EntryId("anchor-match"), EntryId("candidate-match")),)
     assert report.decision_reason_counts == (
         ReasonCount("conflict.shared_candidate", 2),
         ReasonCount("decision.insufficient_margin", 1),
@@ -85,9 +83,9 @@ def test_decision_report_retains_ranked_scores_contenders_and_selection(mixed_ba
     assert conflict.selected_candidate_id is None
     assert conflict.contender_ids == (EntryId("candidate-shared"),)
     assert conflict.competing_anchor_ids == (EntryId("anchor-conflict-b"),)
-    assert report.decision_for(
-        EntryId("anchor-conflict-b")
-    ).competing_anchor_ids == (EntryId("anchor-conflict-a"),)
+    assert report.decision_for(EntryId("anchor-conflict-b")).competing_anchor_ids == (
+        EntryId("anchor-conflict-a"),
+    )
 
 
 def test_report_links_a_preferred_conflict_winner_to_the_displaced_anchor(
@@ -205,9 +203,7 @@ def test_decision_report_rejects_selection_outside_candidates(mixed_batch):
 
 
 def test_decision_report_rejects_self_as_competing_anchor(mixed_batch):
-    decision = build_reconciliation_report(mixed_batch).decision_for(
-        EntryId("anchor-conflict-a")
-    )
+    decision = build_reconciliation_report(mixed_batch).decision_for(EntryId("anchor-conflict-a"))
 
     with pytest.raises(ReconciliationReportError) as captured:
         replace(decision, competing_anchor_ids=(decision.anchor_id,))

@@ -424,9 +424,7 @@ def test_reconciliation_preserves_claims_across_separate_runs(tmp_path, capsys) 
     decision = catalog.reports[-1].decisions[0]
     assert decision.status is DecisionStatus.CONFLICT
     assert decision.reason_code == "conflict.candidate_already_claimed"
-    assert decision.competing_anchor_ids == (
-        catalog.reports[-2].decisions[0].anchor_id,
-    )
+    assert decision.competing_anchor_ids == (catalog.reports[-2].decisions[0].anchor_id,)
 
     code, reused = _run(
         capsys,
@@ -500,9 +498,7 @@ def test_inspect_compares_external_recovery_anchors(tmp_path, capsys) -> None:
     assert invalid["error"]["code"] == "cli.expected_head"
 
 
-def test_append_conflict_has_a_distinct_stable_exit_code(
-    tmp_path, capsys, monkeypatch
-) -> None:
+def test_append_conflict_has_a_distinct_stable_exit_code(tmp_path, capsys, monkeypatch) -> None:
     database = tmp_path / "conflict.db"
     source = tmp_path / "source.csv"
     _write_csv(
@@ -609,9 +605,7 @@ def test_import_accepts_the_exact_configured_record_limit(tmp_path, capsys) -> N
 
 
 @pytest.mark.parametrize("limit", ("0", "-1", "not-an-integer"))
-def test_import_record_limit_must_be_a_positive_integer(
-    tmp_path, capsys, limit
-) -> None:
+def test_import_record_limit_must_be_a_positive_integer(tmp_path, capsys, limit) -> None:
     database = tmp_path / "invalid-limit.db"
     source = tmp_path / "source.csv"
     _write_csv(

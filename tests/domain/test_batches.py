@@ -158,9 +158,7 @@ def test_batch_is_immutable_and_does_not_alias_mutable_input():
         (1, "not-a-diagnostic", "located_diagnostic.diagnostic_type"),
     ],
 )
-def test_located_diagnostic_validates_its_public_boundary(
-    position, diagnostic, expected_code
-):
+def test_located_diagnostic_validates_its_public_boundary(position, diagnostic, expected_code):
     with pytest.raises(DomainValidationError) as captured:
         LocatedDiagnostic(position, diagnostic)
 

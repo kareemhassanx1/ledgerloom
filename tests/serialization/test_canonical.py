@@ -20,9 +20,7 @@ def test_sorts_object_keys_and_removes_insignificant_whitespace():
 def test_canonicalizes_nested_objects_and_sequences_recursively():
     value = {"items": ({"b": True, "a": None}, [3, 2, 1]), "name": "batch"}
 
-    assert canonical_json_text(value) == (
-        '{"items":[{"a":null,"b":true},[3,2,1]],"name":"batch"}'
-    )
+    assert canonical_json_text(value) == ('{"items":[{"a":null,"b":true},[3,2,1]],"name":"batch"}')
 
 
 def test_emits_unicode_as_utf8_instead_of_ascii_escape_sequences():
@@ -119,7 +117,7 @@ def test_loads_canonical_document_to_detached_data():
         b'{"b":2,"a":1}',
         b'{"a": 1}',
         b'{"a":1}\n',
-        b'[1, 2]',
+        b"[1, 2]",
         b'"\\u20ac"',
     ],
 )

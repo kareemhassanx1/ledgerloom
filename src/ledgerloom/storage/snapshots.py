@@ -45,4 +45,3 @@ class StoredJournalSnapshot:
 
 
 __all__ = ["StoredJournalSnapshot"]
-

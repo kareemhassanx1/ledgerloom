@@ -208,9 +208,7 @@ class SourceRecordMapper:
             "amount",
             lambda: Money.parse(amount_text, currency_text),
         )
-        occurred_at = construct(
-            "occurred_at", lambda: UtcTimestamp.parse(occurred_at_text)
-        )
+        occurred_at = construct("occurred_at", lambda: UtcTimestamp.parse(occurred_at_text))
         if diagnostics:
             return ValidationResult.failure(*diagnostics)
 

@@ -13,6 +13,7 @@ _DIAGNOSTIC_CODE_PATTERN = re.compile(r"^[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)+$"
 _FIELD_PATTERN = re.compile(r"^[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)*$")
 _MAX_MESSAGE_LENGTH = 512
 
+
 class DiagnosticSeverity(StrEnum):
     """Machine-stable diagnostic severity levels."""
 

@@ -41,19 +41,13 @@ def _decimal_text(value: Decimal) -> str:
 
 
 def _timedelta_microseconds(value: timedelta) -> str:
-    return str(
-        value.days * 86_400_000_000
-        + value.seconds * 1_000_000
-        + value.microseconds
-    )
+    return str(value.days * 86_400_000_000 + value.seconds * 1_000_000 + value.microseconds)
 
 
 def _encode_evidence(evidence: RuleEvidence) -> dict[str, JsonValue]:
     return {
         "children": [_encode_evidence(item) for item in evidence.children],
-        "facts": [
-            {"name": item.name, "value": item.value} for item in evidence.facts
-        ],
+        "facts": [{"name": item.name, "value": item.value} for item in evidence.facts],
         "reason_code": evidence.reason_code,
         "rule_id": evidence.rule_id,
         "verdict": str(evidence.verdict),
@@ -95,9 +89,7 @@ def _encode_decision(decision: DecisionReport) -> dict[str, JsonValue]:
         "contender_ids": [str(item) for item in decision.contender_ids],
         "reason_code": decision.reason_code,
         "selected_candidate_id": (
-            None
-            if decision.selected_candidate_id is None
-            else str(decision.selected_candidate_id)
+            None if decision.selected_candidate_id is None else str(decision.selected_candidate_id)
         ),
         "selection": _encode_selection(decision.selection_report),
         "status": str(decision.status),
@@ -110,9 +102,7 @@ def _encode_policy(policy: ReconciliationPolicySnapshot | None) -> JsonValue:
     return {
         "conflict_strategy": str(policy.conflict_strategy),
         "max_amount_difference": _decimal_text(policy.max_amount_difference),
-        "max_time_difference_microseconds": _timedelta_microseconds(
-            policy.max_time_difference
-        ),
+        "max_time_difference_microseconds": _timedelta_microseconds(policy.max_time_difference),
         "minimum_margin": policy.minimum_margin,
         "minimum_score": policy.minimum_score,
         "require_reference": policy.require_reference,
@@ -246,8 +236,7 @@ def _entry_id(value: JsonValue, *, path: str) -> EntryId:
 
 def _string_tuple(value: JsonValue, *, path: str) -> tuple[str, ...]:
     return tuple(
-        _text(item, path=f"{path}[{index}]")
-        for index, item in enumerate(_array(value, path=path))
+        _text(item, path=f"{path}[{index}]") for index, item in enumerate(_array(value, path=path))
     )
 
 
@@ -336,9 +325,7 @@ def _decode_candidate(value: JsonValue, *, path: str) -> CandidateReport:
         lambda: CandidateReport(
             candidate_id=_entry_id(item["candidate_id"], path=f"{path}.candidate_id"),
             score=_integer(item["score"], path=f"{path}.score"),
-            maximum_score=_integer(
-                item["maximum_score"], path=f"{path}.maximum_score"
-            ),
+            maximum_score=_integer(item["maximum_score"], path=f"{path}.maximum_score"),
             confidence_basis_points=_integer(
                 item["confidence_basis_points"],
                 path=f"{path}.confidence_basis_points",
@@ -425,16 +412,12 @@ def _decode_decision(value: JsonValue, *, path: str) -> DecisionReport:
             status=DecisionStatus(_text(item["status"], path=f"{path}.status")),
             reason_code=_text(item["reason_code"], path=f"{path}.reason_code"),
             selected_candidate_id=selected,
-            contender_ids=_entry_id_tuple(
-                item["contender_ids"], path=f"{path}.contender_ids"
-            ),
+            contender_ids=_entry_id_tuple(item["contender_ids"], path=f"{path}.contender_ids"),
             competing_anchor_ids=_entry_id_tuple(
                 item["competing_anchor_ids"], path=f"{path}.competing_anchor_ids"
             ),
             candidates=candidates,
-            selection_report=_decode_selection(
-                item["selection"], path=f"{path}.selection"
-            ),
+            selection_report=_decode_selection(item["selection"], path=f"{path}.selection"),
         ),
         path=path,
     )
@@ -493,9 +476,7 @@ def _decode_policy(
         ),
     )
     rules: list[ScoringRuleSnapshot] = []
-    for index, rule_value in enumerate(
-        _array(item["scoring_rules"], path=f"{path}.scoring_rules")
-    ):
+    for index, rule_value in enumerate(_array(item["scoring_rules"], path=f"{path}.scoring_rules")):
         rule_path = f"{path}.scoring_rules[{index}]"
         rule = _object(
             rule_value,
@@ -514,12 +495,8 @@ def _decode_policy(
     return _construct(
         lambda: ReconciliationPolicySnapshot(
             scoring_rules=tuple(rules),
-            minimum_score=_integer(
-                item["minimum_score"], path=f"{path}.minimum_score"
-            ),
-            minimum_margin=_integer(
-                item["minimum_margin"], path=f"{path}.minimum_margin"
-            ),
+            minimum_score=_integer(item["minimum_score"], path=f"{path}.minimum_score"),
+            minimum_margin=_integer(item["minimum_margin"], path=f"{path}.minimum_margin"),
             max_time_difference=_parse_duration(
                 item["max_time_difference_microseconds"],
                 path=f"{path}.max_time_difference_microseconds",
@@ -527,9 +504,7 @@ def _decode_policy(
             max_amount_difference=_parse_decimal(
                 item["max_amount_difference"], path=f"{path}.max_amount_difference"
             ),
-            require_reference=_boolean(
-                item["require_reference"], path=f"{path}.require_reference"
-            ),
+            require_reference=_boolean(item["require_reference"], path=f"{path}.require_reference"),
             conflict_strategy=ConflictStrategy(
                 _text(item["conflict_strategy"], path=f"{path}.conflict_strategy")
             ),
@@ -582,9 +557,7 @@ def decode_reconciliation_report(value: JsonValue) -> ReconciliationReport:
     )
     decisions = tuple(
         _decode_decision(item, path=f"$.payload.decisions[{index}]")
-        for index, item in enumerate(
-            _array(payload["decisions"], path="$.payload.decisions")
-        )
+        for index, item in enumerate(_array(payload["decisions"], path="$.payload.decisions"))
     )
     return _construct(
         lambda: ReconciliationReport(

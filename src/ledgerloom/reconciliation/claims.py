@@ -177,9 +177,7 @@ class ReconciliationClaims:
         )
         if not owners:
             return decision
-        competitors = tuple(
-            dict.fromkeys((*decision.competing_anchor_ids, *owners))
-        )
+        competitors = tuple(dict.fromkeys((*decision.competing_anchor_ids, *owners)))
         return replace(
             decision,
             status=DecisionStatus.CONFLICT,
@@ -191,4 +189,3 @@ class ReconciliationClaims:
 
 
 __all__ = ["EntryClaim", "ReconciliationClaims"]
-

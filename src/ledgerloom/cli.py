@@ -214,9 +214,7 @@ def _run_import(arguments: argparse.Namespace) -> tuple[dict[str, object], ExitC
         entries = journal.inspect_snapshot().require_valid()
         catalog = JournalCatalog.from_entries(entries)
         if catalog.contains_batch(batch_id):
-            raise _CliError(
-                "cli.batch_exists", "$.batch", "batch identifier already exists"
-            )
+            raise _CliError("cli.batch_exists", "$.batch", "batch identifier already exists")
         existing_source_keys = {
             entry.source_key for batch in catalog.batches for entry in batch.entries
         }
@@ -240,9 +238,7 @@ def _run_import(arguments: argparse.Namespace) -> tuple[dict[str, object], ExitC
                 "cli.input_encoding", "$.input", "input must be valid UTF-8 text"
             ) from error
         except OSError as error:
-            raise _CliError(
-                "cli.input_read", "$.input", "input file could not be read"
-            ) from error
+            raise _CliError("cli.input_read", "$.input", "input file could not be read") from error
         if not rows:
             raise _CliError(
                 "cli.import_empty", "$.input", "input must contain at least one data record"
@@ -362,9 +358,7 @@ def _run_reconcile(arguments: argparse.Namespace) -> tuple[dict[str, object], Ex
         entries = journal.inspect_snapshot().require_valid()
         catalog = JournalCatalog.from_entries(entries)
         if catalog.contains_batch(result_batch_id):
-            raise _CliError(
-                "cli.batch_exists", "$.batch", "batch identifier already exists"
-            )
+            raise _CliError("cli.batch_exists", "$.batch", "batch identifier already exists")
         anchor_batch = next(
             (item for item in catalog.batches if item.batch_id == anchor_batch_id), None
         )
@@ -496,9 +490,11 @@ def _run_export(arguments: argparse.Namespace) -> tuple[dict[str, object], ExitC
 
 
 def _command_name(arguments: Sequence[str]) -> str:
-    return arguments[0] if arguments and arguments[0] in {
-        "import", "reconcile", "inspect", "export"
-    } else "ledgerloom"
+    return (
+        arguments[0]
+        if arguments and arguments[0] in {"import", "reconcile", "inspect", "export"}
+        else "ledgerloom"
+    )
 
 
 def _emit(payload: dict[str, object]) -> None:

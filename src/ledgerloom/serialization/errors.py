@@ -13,4 +13,3 @@ class SerializationError(LedgerLoomError, ValueError):
         self.path = path
         self.message = message
         super().__init__(f"{path}: {message} [{code}]")
-

@@ -33,9 +33,7 @@ class ReplayCursor:
                 path="$.cursor.sequence",
                 message=f"cursor sequence must be between 0 and {MAX_JOURNAL_SEQUENCE}",
             )
-        if self.fingerprint is not None and not isinstance(
-            self.fingerprint, ContentFingerprint
-        ):
+        if self.fingerprint is not None and not isinstance(self.fingerprint, ContentFingerprint):
             raise JournalError(
                 code="journal.cursor_fingerprint_type",
                 path="$.cursor.fingerprint",

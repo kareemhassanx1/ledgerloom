@@ -130,9 +130,7 @@ class CandidateReport:
                 path="$.candidate.required_rule_ids",
                 message="every required rule must occur in evidence",
             )
-        expected_required_ids = tuple(
-            item for item in rule_ids if item in self.required_rule_ids
-        )
+        expected_required_ids = tuple(item for item in rule_ids if item in self.required_rule_ids)
         if self.required_rule_ids != expected_required_ids:
             raise ReconciliationReportError(
                 code="report.required_rule_order",
@@ -185,8 +183,7 @@ class CandidateReport:
         return tuple(
             item.rule_id
             for item in self.evidence
-            if item.rule_id in self.required_rule_ids
-            and item.verdict is MatchVerdict.NO_MATCH
+            if item.rule_id in self.required_rule_ids and item.verdict is MatchVerdict.NO_MATCH
         )
 
     @property
@@ -194,8 +191,7 @@ class CandidateReport:
         return tuple(
             item.rule_id
             for item in self.evidence
-            if item.rule_id in self.required_rule_ids
-            and item.verdict is MatchVerdict.INDETERMINATE
+            if item.rule_id in self.required_rule_ids and item.verdict is MatchVerdict.INDETERMINATE
         )
 
     @property
@@ -203,11 +199,7 @@ class CandidateReport:
         """Return score and nested rule reasons in deterministic traversal order."""
 
         codes = [self.reason_code]
-        codes.extend(
-            item.reason_code
-            for evidence in self.evidence
-            for item in evidence.walk()
-        )
+        codes.extend(item.reason_code for evidence in self.evidence for item in evidence.walk())
         return tuple(dict.fromkeys(codes))
 
 
@@ -377,9 +369,8 @@ class DecisionReport:
                 path="$.decision.selection_report",
                 message="selection_report must be a SelectionReport or None",
             )
-        if (
-            self.selection_report is not None
-            and self.selection_report.evaluated != len(self.candidates)
+        if self.selection_report is not None and self.selection_report.evaluated != len(
+            self.candidates
         ):
             raise ReconciliationReportError(
                 code="report.selection_evaluated_mismatch",
@@ -773,9 +764,7 @@ class ReconciliationReport:
                 else str(decision.selected_candidate_id)
             )
             contenders = ",".join(str(item) for item in decision.contender_ids) or "none"
-            competitors = (
-                ",".join(str(item) for item in decision.competing_anchor_ids) or "none"
-            )
+            competitors = ",".join(str(item) for item in decision.competing_anchor_ids) or "none"
             lines.append(
                 f"{decision.anchor_id}: {decision.status} "
                 f"reason={decision.reason_code} selected={selected} "

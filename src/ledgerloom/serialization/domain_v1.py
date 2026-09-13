@@ -259,9 +259,7 @@ def decode_diagnostic(value: JsonValue, *, path: str) -> Diagnostic:
 
 def _encode_result(result: ValidationResult[LedgerEntry]) -> dict[str, JsonValue]:
     validated = _require_python_type(result, ValidationResult)
-    diagnostics: list[JsonValue] = [
-        encode_diagnostic(item) for item in validated.diagnostics
-    ]
+    diagnostics: list[JsonValue] = [encode_diagnostic(item) for item in validated.diagnostics]
     if validated.value is None:
         return {"diagnostics": diagnostics, "status": "rejected"}
     return {

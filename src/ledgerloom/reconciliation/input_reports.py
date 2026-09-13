@@ -94,9 +94,7 @@ class InputOutcomeReport:
             )
 
         errors = tuple(
-            item
-            for item in self.diagnostics
-            if item.severity is DiagnosticSeverity.ERROR
+            item for item in self.diagnostics if item.severity is DiagnosticSeverity.ERROR
         )
         if self.status is ReconciliationRecordStatus.INVALID:
             if self.entry_id is not None or self.decision is not None:
@@ -202,27 +200,15 @@ class InputReconciliationSummary:
         outcomes: tuple[InputOutcomeReport, ...],
     ) -> InputReconciliationSummary:
         total = len(outcomes)
-        matched = sum(
-            item.status is ReconciliationRecordStatus.MATCHED for item in outcomes
-        )
+        matched = sum(item.status is ReconciliationRecordStatus.MATCHED for item in outcomes)
         return cls(
             total=total,
             matched=matched,
-            unmatched=sum(
-                item.status is ReconciliationRecordStatus.UNMATCHED
-                for item in outcomes
-            ),
-            ambiguous=sum(
-                item.status is ReconciliationRecordStatus.AMBIGUOUS
-                for item in outcomes
-            ),
-            invalid=sum(
-                item.status is ReconciliationRecordStatus.INVALID for item in outcomes
-            ),
+            unmatched=sum(item.status is ReconciliationRecordStatus.UNMATCHED for item in outcomes),
+            ambiguous=sum(item.status is ReconciliationRecordStatus.AMBIGUOUS for item in outcomes),
+            invalid=sum(item.status is ReconciliationRecordStatus.INVALID for item in outcomes),
             evaluated_candidates=sum(
-                len(item.decision.candidates)
-                for item in outcomes
-                if item.decision is not None
+                len(item.decision.candidates) for item in outcomes if item.decision is not None
             ),
             coverage_basis_points=(matched * BASIS_POINT_SCALE) // total,
         )
@@ -257,8 +243,10 @@ class InputReconciliationReport:
                 path="$.input_report.summary",
                 message="summary must be an InputReconciliationSummary",
             )
-        if not isinstance(self.outcomes, tuple) or not self.outcomes or not all(
-            isinstance(item, InputOutcomeReport) for item in self.outcomes
+        if (
+            not isinstance(self.outcomes, tuple)
+            or not self.outcomes
+            or not all(isinstance(item, InputOutcomeReport) for item in self.outcomes)
         ):
             raise ReconciliationReportError(
                 code="input_report.outcomes_type",
@@ -280,9 +268,7 @@ class InputReconciliationReport:
                 message="summary does not match input outcomes",
             )
 
-        decisions = tuple(
-            item.decision for item in self.outcomes if item.decision is not None
-        )
+        decisions = tuple(item.decision for item in self.outcomes if item.decision is not None)
         if decisions:
             if not isinstance(self.reconciliation_report, ReconciliationReport):
                 raise ReconciliationReportError(
@@ -360,9 +346,7 @@ class InputReconciliationReport:
             reasons = ",".join(outcome.reason_codes)
             if outcome.status is ReconciliationRecordStatus.INVALID:
                 fields = ",".join(item.field for item in outcome.diagnostics)
-                lines.append(
-                    f"{outcome.position}: invalid reasons={reasons} fields={fields}"
-                )
+                lines.append(f"{outcome.position}: invalid reasons={reasons} fields={fields}")
                 continue
             assert outcome.entry_id is not None
             assert outcome.decision is not None
@@ -427,19 +411,14 @@ def build_input_reconciliation_report(
         )
 
     accepted_by_id = {item.entry_id: item for item in accepted_entries}
-    decisions_by_id = {
-        item.anchor.entry_id: item for item in reconciliation_batch.decisions
-    }
+    decisions_by_id = {item.anchor.entry_id: item for item in reconciliation_batch.decisions}
     if set(accepted_by_id) != set(decisions_by_id):
         raise ReconciliationReportError(
             code="input_report.anchor_set_mismatch",
             path="$.reconciliation_batch.decisions",
             message="decisions must cover exactly the accepted input entries",
         )
-    if any(
-        decisions_by_id[entry_id].anchor != entry
-        for entry_id, entry in accepted_by_id.items()
-    ):
+    if any(decisions_by_id[entry_id].anchor != entry for entry_id, entry in accepted_by_id.items()):
         raise ReconciliationReportError(
             code="input_report.anchor_content_mismatch",
             path="$.reconciliation_batch.decisions.anchor",
@@ -447,9 +426,7 @@ def build_input_reconciliation_report(
         )
 
     reconciliation_report = build_reconciliation_report(reconciliation_batch)
-    reports_by_id = {
-        item.anchor_id: item for item in reconciliation_report.decisions
-    }
+    reports_by_id = {item.anchor_id: item for item in reconciliation_report.decisions}
     outcomes_list: list[InputOutcomeReport] = []
     for position, result in enumerate(input_batch.results, start=1):
         if result.value is None:

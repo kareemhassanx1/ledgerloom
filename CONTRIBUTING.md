@@ -12,6 +12,7 @@ Activate the environment using the command appropriate for your shell, then run
 the project quality checks:
 
 ```shell
+python -m ruff format --check .
 python -m ruff check .
 python -m mypy
 python -m pytest -q --cov=ledgerloom --cov-report=term-missing --cov-fail-under=85

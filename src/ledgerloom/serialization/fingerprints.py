@@ -28,9 +28,7 @@ class ContentFingerprint:
                 path="$.algorithm",
                 message="only sha256 fingerprints are supported",
             )
-        if not isinstance(self.digest, str) or not _SHA256_DIGEST_PATTERN.fullmatch(
-            self.digest
-        ):
+        if not isinstance(self.digest, str) or not _SHA256_DIGEST_PATTERN.fullmatch(self.digest):
             raise SerializationError(
                 code="fingerprint.digest",
                 path="$.digest",
@@ -87,4 +85,3 @@ class ContentFingerprint:
 
     def __str__(self) -> str:
         return f"{self.algorithm}:{self.digest}"
-

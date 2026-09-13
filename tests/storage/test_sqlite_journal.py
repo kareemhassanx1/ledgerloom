@@ -51,9 +51,7 @@ def test_batch_append_survives_close_reopen_and_resumes_chain(tmp_path):
         assert reopened.integrity_report(expected_count=4).is_valid
 
 
-@pytest.mark.parametrize(
-    "mode", (SQLiteJournalMode.OPEN, SQLiteJournalMode.READ_ONLY)
-)
+@pytest.mark.parametrize("mode", (SQLiteJournalMode.OPEN, SQLiteJournalMode.READ_ONLY))
 def test_existing_modes_never_create_a_missing_database(tmp_path, mode):
     path = tmp_path / "missing.sqlite3"
 

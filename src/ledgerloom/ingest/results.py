@@ -103,9 +103,7 @@ class ImportDiagnosticCount:
     count: int
 
     def __post_init__(self) -> None:
-        if not isinstance(self.code, str) or not _DIAGNOSTIC_CODE_PATTERN.fullmatch(
-            self.code
-        ):
+        if not isinstance(self.code, str) or not _DIAGNOSTIC_CODE_PATTERN.fullmatch(self.code):
             raise IngestError(
                 code="ingest.summary_code",
                 path="$.summary.diagnostic_counts.code",
@@ -214,9 +212,7 @@ def summarize_import(rows: Iterable[ImportRowResult]) -> ImportSummary:
                 warnings += 1
             else:
                 errors += 1
-    diagnostic_counts = tuple(
-        ImportDiagnosticCount(code, counts[code]) for code in sorted(counts)
-    )
+    diagnostic_counts = tuple(ImportDiagnosticCount(code, counts[code]) for code in sorted(counts))
     return ImportSummary(
         total,
         accepted,

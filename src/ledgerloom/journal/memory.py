@@ -39,9 +39,7 @@ class InMemoryJournal:
             raise JournalError(
                 code="journal.max_read_limit_range",
                 path="$.max_read_limit",
-                message=(
-                    f"max read limit must be between 1 and {MAX_CONFIGURED_READ_LIMIT}"
-                ),
+                message=(f"max read limit must be between 1 and {MAX_CONFIGURED_READ_LIMIT}"),
             )
         self._max_read_limit = resolved_limit
         self._entries: list[JournalEntry] = []
@@ -135,11 +133,15 @@ class InMemoryJournal:
                 path="$.after_sequence",
                 message=f"after sequence must be between 0 and {MAX_JOURNAL_SEQUENCE}",
             )
-        resolved_limit = self._max_read_limit if limit is None else _integer(
-            limit,
-            code="journal.read_limit_type",
-            path="$.limit",
-            label="read limit",
+        resolved_limit = (
+            self._max_read_limit
+            if limit is None
+            else _integer(
+                limit,
+                code="journal.read_limit_type",
+                path="$.limit",
+                label="read limit",
+            )
         )
         if not 1 <= resolved_limit <= self._max_read_limit:
             raise JournalError(

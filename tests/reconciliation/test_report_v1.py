@@ -36,24 +36,16 @@ def test_report_payload_retains_policy_selection_and_nested_evidence(mixed_batch
     report = build_reconciliation_report(mixed_batch)
 
     payload = encode_reconciliation_report(report)
-    matched = next(
-        item for item in payload["decisions"] if item["anchor_id"] == "anchor-match"
-    )
+    matched = next(item for item in payload["decisions"] if item["anchor_id"] == "anchor-match")
 
     assert payload["policy"]["max_time_difference_microseconds"] == "300000000"
     assert matched["selection"]["evaluated"] == 1
-    assert matched["candidates"][0]["evidence"][0]["rule_id"] == (
-        "ledgerloom.same_account"
-    )
+    assert matched["candidates"][0]["evidence"][0]["rule_id"] == ("ledgerloom.same_account")
 
 
 def test_equivalent_reports_produce_identical_documents(mixed_batch):
-    first = build_reconciliation_report_document(
-        build_reconciliation_report(mixed_batch)
-    )
-    second = build_reconciliation_report_document(
-        build_reconciliation_report(mixed_batch)
-    )
+    first = build_reconciliation_report_document(build_reconciliation_report(mixed_batch))
+    second = build_reconciliation_report_document(build_reconciliation_report(mixed_batch))
 
     assert second.content == first.content
     assert second.fingerprint == first.fingerprint
@@ -82,9 +74,7 @@ def test_report_document_round_trips_through_verified_models(mixed_batch):
 def test_report_parser_rejects_a_changed_document_against_expected_fingerprint(
     mixed_batch,
 ):
-    document = build_reconciliation_report_document(
-        build_reconciliation_report(mixed_batch)
-    )
+    document = build_reconciliation_report_document(build_reconciliation_report(mixed_batch))
     envelope = loads_canonical_json(document.content)
     envelope["payload"]["batch_id"] = "changed-batch"
     changed = canonical_json_bytes(envelope)

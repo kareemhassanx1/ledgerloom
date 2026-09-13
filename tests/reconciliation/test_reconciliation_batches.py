@@ -39,9 +39,7 @@ def test_batch_workflow_produces_all_outcome_types_in_canonical_order(mixed_batc
         DecisionStatus.CONFLICT,
         DecisionStatus.UNMATCHED,
     )
-    assert mixed_batch.matched_pairs == (
-        (EntryId("anchor-match"), EntryId("candidate-match")),
-    )
+    assert mixed_batch.matched_pairs == ((EntryId("anchor-match"), EntryId("candidate-match")),)
     assert mixed_batch.policy_snapshot == ReconciliationPolicySnapshot(
         scoring_rules=(
             ScoringRuleSnapshot("ledgerloom.same_account", 20, True),

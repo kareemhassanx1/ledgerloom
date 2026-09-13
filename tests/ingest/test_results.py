@@ -118,6 +118,8 @@ def test_import_summary_counts_results_severity_and_reasons():
             ImportDiagnosticCount("ingest.reference_missing", 1),
         ),
     )
+
+
 def test_import_summary_supports_an_empty_stream():
     assert summarize_import(()) == ImportSummary(0, 0, 0, 0, 0)
 

@@ -262,10 +262,7 @@ class BatchSelectionTrace:
                     path=f"$.selection_trace.{name}",
                     message=f"{name} must not be negative",
                 )
-        if (
-            self.excluded_batch_anchors + self.scored_candidates
-            != self.index_trace.selected
-        ):
+        if self.excluded_batch_anchors + self.scored_candidates != self.index_trace.selected:
             raise ReconciliationBatchError(
                 code="batch.trace_count_mismatch",
                 path="$.selection_trace",
@@ -380,14 +377,10 @@ class ReconciliationBatch:
                         message="every conflict must identify another claim on its candidate",
                     )
         if self.policy_snapshot is not None:
-            expected_rule_ids = tuple(
-                item.rule_id for item in self.policy_snapshot.scoring_rules
-            )
+            expected_rule_ids = tuple(item.rule_id for item in self.policy_snapshot.scoring_rules)
             expected_required_ids = self.policy_snapshot.required_rule_ids
             expected_maximum = self.policy_snapshot.maximum_score
-            weights = {
-                item.rule_id: item.weight for item in self.policy_snapshot.scoring_rules
-            }
+            weights = {item.rule_id: item.weight for item in self.policy_snapshot.scoring_rules}
             for decision in ordered:
                 for candidate in decision.ranking:
                     evidence_rule_ids = tuple(item.rule_id for item in candidate.evidence)

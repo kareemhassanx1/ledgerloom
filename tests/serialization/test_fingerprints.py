@@ -84,4 +84,3 @@ def test_require_bytes_raises_stable_mismatch_error():
 
     assert captured.value.code == "fingerprint.mismatch"
     assert captured.value.path == "$"
-

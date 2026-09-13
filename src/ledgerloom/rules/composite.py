@@ -36,8 +36,7 @@ def _validate_children(rule_id: str, rules: object) -> tuple[MatchRule, ...]:
             message="composite children must satisfy MatchRule",
         )
     child_ids = tuple(
-        validate_rule_code(rule.rule_id, path="$.rule.rules.rule_id", kind="id")
-        for rule in rules
+        validate_rule_code(rule.rule_id, path="$.rule.rules.rule_id", kind="id") for rule in rules
     )
     if len(child_ids) != len(set(child_ids)):
         raise RuleError(

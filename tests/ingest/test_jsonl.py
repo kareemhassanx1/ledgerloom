@@ -89,9 +89,7 @@ def test_jsonl_numbers_do_not_silently_become_text_fields():
 
 def test_jsonl_blank_lines_are_policy_controlled_and_locations_stay_physical():
     permissive = tuple(_importer().import_rows(("\n", _line())))
-    strict = tuple(
-        _importer(JsonlPolicy(skip_blank_lines=False)).import_rows(("\n", _line()))
-    )
+    strict = tuple(_importer(JsonlPolicy(skip_blank_lines=False)).import_rows(("\n", _line())))
 
     assert len(permissive) == 1
     assert permissive[0].location == permissive[0].location.__class__(1, 2)
@@ -101,9 +99,7 @@ def test_jsonl_blank_lines_are_policy_controlled_and_locations_stay_physical():
 
 def test_jsonl_accepts_first_line_bom_or_diagnoses_it_by_policy():
     accepted = next(_importer().import_rows(("\ufeff" + _line(),)))
-    strict = next(
-        _importer(JsonlPolicy(allow_utf8_bom=False)).import_rows(("\ufeff" + _line(),))
-    )
+    strict = next(_importer(JsonlPolicy(allow_utf8_bom=False)).import_rows(("\ufeff" + _line(),)))
 
     assert accepted.is_valid
     assert strict.diagnostics[0].code == "ingest.jsonl_bom"

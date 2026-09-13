@@ -149,4 +149,3 @@ def test_range_duration_uses_normalized_instants():
     interval = make_range("2026-08-21T12:00:00+03:00", "2026-08-21T12:30:00+02:00")
 
     assert interval.duration == timedelta(hours=1, minutes=30)
-

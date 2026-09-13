@@ -171,9 +171,7 @@ class CandidateScore:
                 path="$.candidate_score.required_rule_ids",
                 message="every required rule must occur in evidence",
             )
-        expected_required_ids = tuple(
-            item for item in rule_ids if item in self.required_rule_ids
-        )
+        expected_required_ids = tuple(item for item in rule_ids if item in self.required_rule_ids)
         if self.required_rule_ids != expected_required_ids:
             raise ScoringError(
                 code="score.required_rule_order",
@@ -221,17 +219,14 @@ class CandidateScore:
 
     @property
     def matched_rule_ids(self) -> tuple[str, ...]:
-        return tuple(
-            item.rule_id for item in self.evidence if item.verdict is MatchVerdict.MATCH
-        )
+        return tuple(item.rule_id for item in self.evidence if item.verdict is MatchVerdict.MATCH)
 
     @property
     def rejected_required_rule_ids(self) -> tuple[str, ...]:
         return tuple(
             item.rule_id
             for item in self.evidence
-            if item.rule_id in self.required_rule_ids
-            and item.verdict is MatchVerdict.NO_MATCH
+            if item.rule_id in self.required_rule_ids and item.verdict is MatchVerdict.NO_MATCH
         )
 
     @property
@@ -239,8 +234,7 @@ class CandidateScore:
         return tuple(
             item.rule_id
             for item in self.evidence
-            if item.rule_id in self.required_rule_ids
-            and item.verdict is MatchVerdict.INDETERMINATE
+            if item.rule_id in self.required_rule_ids and item.verdict is MatchVerdict.INDETERMINATE
         )
 
 
@@ -315,18 +309,14 @@ class MatchScorer:
                 message="candidate must not have the anchor entry identifier",
             )
 
-        evidence = tuple(
-            evaluate_rule(config.rule, anchor, candidate) for config in self._rules
-        )
+        evidence = tuple(evaluate_rule(config.rule, anchor, candidate) for config in self._rules)
         score = sum(
             config.weight
             for config, item in zip(self._rules, evidence, strict=True)
             if item.verdict is MatchVerdict.MATCH
         )
         required_evidence = tuple(
-            item
-            for config, item in zip(self._rules, evidence, strict=True)
-            if config.required
+            item for config, item in zip(self._rules, evidence, strict=True) if config.required
         )
         required_rule_ids = tuple(config.rule_id for config in self._rules if config.required)
         if any(item.verdict is MatchVerdict.NO_MATCH for item in required_evidence):

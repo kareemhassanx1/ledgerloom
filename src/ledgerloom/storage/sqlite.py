@@ -517,11 +517,15 @@ class SQLiteJournal:
                 path="$.after_sequence",
                 message=f"after sequence must be between 0 and {MAX_JOURNAL_SEQUENCE}",
             )
-        resolved_limit = self._max_read_limit if limit is None else _integer(
-            limit,
-            code="journal.read_limit_type",
-            path="$.limit",
-            label="read limit",
+        resolved_limit = (
+            self._max_read_limit
+            if limit is None
+            else _integer(
+                limit,
+                code="journal.read_limit_type",
+                path="$.limit",
+                label="read limit",
+            )
         )
         if not 1 <= resolved_limit <= self._max_read_limit:
             raise JournalError(
@@ -781,11 +785,7 @@ class SQLiteJournal:
         return JournalStorageError(
             code="journal.storage_busy" if locked else "journal.storage_error",
             path="$.database",
-            message=(
-                "SQLite journal is busy"
-                if locked
-                else "SQLite journal operation failed"
-            ),
+            message=("SQLite journal is busy" if locked else "SQLite journal operation failed"),
         )
 
     def _validate_expected_sequence(self, value: int | None) -> int | None:

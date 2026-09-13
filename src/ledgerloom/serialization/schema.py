@@ -324,9 +324,7 @@ class SchemaRegistry:
 
     def available_versions(self, name: SchemaName | str) -> tuple[SchemaVersion, ...]:
         resolved_name = name if isinstance(name, SchemaName) else SchemaName.parse(name)
-        return tuple(
-            sorted(ref.version for ref in self._codecs if ref.name == resolved_name)
-        )
+        return tuple(sorted(ref.version for ref in self._codecs if ref.name == resolved_name))
 
     def latest_ref_for(self, python_type: type[object]) -> SchemaRef:
         if not isinstance(python_type, type):
@@ -420,4 +418,3 @@ class SchemaRegistry:
                 message=f"codec {resolved.schema} returned the wrong Python type",
             )
         return value
-

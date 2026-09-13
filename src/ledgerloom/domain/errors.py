@@ -40,4 +40,3 @@ class CurrencyMismatchError(LedgerLoomError, ArithmeticError):
         self.left = left
         self.right = right
         super().__init__(f"currency mismatch: {left} and {right}")
-

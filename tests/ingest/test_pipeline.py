@@ -23,9 +23,7 @@ def test_duplicate_filter_rejects_later_source_record_and_continues():
         "txn-2,assets:cash,30,USD,2026-08-31T10:00:00Z\n"
     )
 
-    first, duplicate, third = tuple(
-        reject_duplicate_source_records(_csv().import_rows(source))
-    )
+    first, duplicate, third = tuple(reject_duplicate_source_records(_csv().import_rows(source)))
 
     assert first.is_valid
     assert not duplicate.is_valid
@@ -42,9 +40,7 @@ def test_invalid_rows_pass_through_and_do_not_claim_an_identity():
         "txn-1,assets:cash,20,USD,2026-08-31T09:00:00Z\n"
     )
 
-    invalid, accepted = tuple(
-        reject_duplicate_source_records(_csv().import_rows(source))
-    )
+    invalid, accepted = tuple(reject_duplicate_source_records(_csv().import_rows(source)))
 
     assert invalid.diagnostics[0].code == "money.parse_format"
     assert accepted.is_valid

@@ -425,4 +425,3 @@ def test_domain_documents_can_be_verified_without_registry():
 
     assert parsed.schema == LEDGER_ENTRY_V1
     assert parsed.fingerprint == ContentFingerprint.from_bytes(document.content)
-

@@ -26,9 +26,7 @@ def make_record(
     )
 
 
-def make_entry(
-    *, entry_id: str = "entry-0042", record: SourceRecord | None = None
-) -> LedgerEntry:
+def make_entry(*, entry_id: str = "entry-0042", record: SourceRecord | None = None) -> LedgerEntry:
     return LedgerEntry.from_source_record(EntryId(entry_id), record or make_record())
 
 
