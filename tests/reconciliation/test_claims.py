@@ -90,3 +90,40 @@ def test_claims_validate_report_and_anchor_inputs():
     with pytest.raises(ReconciliationClaimError) as captured:
         ReconciliationClaims().require_available_anchors((object(),))  # type: ignore[arg-type]
     assert captured.value.code == "claim.anchor_type"
+
+
+@pytest.mark.parametrize(
+    ("anchor_name", "candidate_name"),
+    [("anchor", "fresh"), ("candidate", "fresh"), ("anchor", "candidate")],
+)
+def test_resolve_itself_rejects_an_already_settled_anchor(
+    make_entry,
+    batch_reconciler,
+    anchor_name,
+    candidate_name,
+):
+    records = {name: make_entry(name) for name in ("anchor", "candidate", "fresh")}
+    first = _report(batch_reconciler, "first", records["anchor"], records["candidate"])
+    later = _report(batch_reconciler, "later", records[anchor_name], records[candidate_name])
+    claims = ReconciliationClaims.from_reports((first,))
+    before_pairs = later.matched_pairs
+
+    with pytest.raises(ReconciliationClaimError) as captured:
+        claims.resolve(later)
+
+    assert captured.value.code == "claim.anchor_already_matched"
+    assert captured.value.path == "$.report.decisions[0].anchor_id"
+    assert later.matched_pairs == before_pairs
+    assert claims == ReconciliationClaims.from_reports((first,))
+
+
+def test_resolve_cannot_reclassify_a_committed_anchor_as_unmatched(make_entry, batch_reconciler):
+    anchor, candidate = make_entry("anchor"), make_entry("candidate")
+    first = _report(batch_reconciler, "first", anchor, candidate)
+    later = build_reconciliation_report(
+        batch_reconciler.reconcile(BatchId("later"), (anchor,), CandidateIndex(()))
+    )
+    assert later.summary.unmatched == 1
+
+    with pytest.raises(ReconciliationClaimError, match="already participates"):
+        ReconciliationClaims.from_reports((first,)).resolve(later)

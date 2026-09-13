@@ -155,7 +155,7 @@ class ReconciliationClaims:
                 )
 
     def resolve(self, report: ReconciliationReport) -> ReconciliationReport:
-        """Turn selections of previously claimed entries into explicit conflicts."""
+        """Reject settled anchors, then turn claimed candidates into conflicts."""
 
         if not isinstance(report, ReconciliationReport):
             raise ReconciliationClaimError(
@@ -163,6 +163,16 @@ class ReconciliationClaims:
                 path="$.report",
                 message="report must be a ReconciliationReport",
             )
+        claimed = self.claimed_entry_ids
+        for index, decision in enumerate(report.decisions):
+            if decision.anchor_id in claimed:
+                raise ReconciliationClaimError(
+                    code="claim.anchor_already_matched",
+                    path=f"$.report.decisions[{index}].anchor_id",
+                    message=(
+                        f"anchor {decision.anchor_id} already participates in a committed match"
+                    ),
+                )
         resolved = tuple(self._resolve_decision(item) for item in report.decisions)
         if resolved == report.decisions:
             return report
