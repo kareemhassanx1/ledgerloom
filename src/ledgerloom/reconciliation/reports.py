@@ -667,6 +667,46 @@ class ReconciliationReport:
                 path="$.report.decisions",
                 message="matched reports must not reuse a candidate",
             )
+        self._require_policy_evidence()
+
+    def _require_policy_evidence(self) -> None:
+        policy = self.policy_snapshot
+        if policy is None:
+            return
+        rule_ids = tuple(rule.rule_id for rule in policy.scoring_rules)
+        weights = {rule.rule_id: rule.weight for rule in policy.scoring_rules}
+        for decision_index, decision in enumerate(self.decisions):
+            for candidate_index, candidate in enumerate(decision.candidates):
+                path = f"$.report.decisions[{decision_index}].candidates[{candidate_index}]"
+                if tuple(item.rule_id for item in candidate.evidence) != rule_ids:
+                    raise ReconciliationReportError(
+                        code="report.policy_rule_mismatch",
+                        path=f"{path}.evidence",
+                        message="candidate evidence must match policy rule identities and order",
+                    )
+                if candidate.required_rule_ids != policy.required_rule_ids:
+                    raise ReconciliationReportError(
+                        code="report.policy_required_mismatch",
+                        path=f"{path}.required_rule_ids",
+                        message="candidate required rules must match the retained policy",
+                    )
+                if candidate.maximum_score != policy.maximum_score:
+                    raise ReconciliationReportError(
+                        code="report.policy_maximum_mismatch",
+                        path=f"{path}.maximum_score",
+                        message="candidate maximum score must match the sum of policy weights",
+                    )
+                expected_score = sum(
+                    weights[item.rule_id]
+                    for item in candidate.evidence
+                    if item.verdict is MatchVerdict.MATCH
+                )
+                if candidate.score != expected_score:
+                    raise ReconciliationReportError(
+                        code="report.policy_score_mismatch",
+                        path=f"{path}.score",
+                        message="candidate score must match policy weights and recorded verdicts",
+                    )
 
     def decision_for(self, anchor_id: EntryId) -> DecisionReport:
         if not isinstance(anchor_id, EntryId):

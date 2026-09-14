@@ -92,6 +92,14 @@ These application checks supplement the hash-chain verification: a correctly
 hashed document can still contain an unusable reconciliation history. Direct
 report resolution enforces the same settled-anchor guard as the CLI.
 
+Accepted entry identifiers and source-scoped record identifiers remain unique
+across imported batches; rejected duplicate-import rows remain available as
+diagnostics. Replay also rejects later reports that reclassify settled entries
+as unmatched, ambiguous, or conflicting. Reports carrying a scoring policy must
+agree with its ordered rules, required rules, weights, and recorded verdicts.
+Legacy reports without a policy remain supported; these checks do not rerun
+external rule implementations or prove the original financial facts.
+
 Verified exports are written beside their destination and published atomically.
 They do not overwrite an existing file unless explicitly requested, and the CLI
 protects the database plus its SQLite sidecar files from being selected as an
