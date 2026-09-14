@@ -55,6 +55,9 @@ jobs:
       - name: Build wheel
         run: python -m pip wheel --disable-pip-version-check --no-deps --wheel-dir dist .
 
+      - name: Verify packaged sources
+        run: python scripts/verify_wheel.py dist/*.whl
+
       - name: Smoke-test built wheel
         shell: bash
         run: |

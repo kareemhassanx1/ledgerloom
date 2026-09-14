@@ -17,8 +17,14 @@ python -m ruff check .
 python -m mypy
 python -m pytest -q --cov=ledgerloom --cov-report=term-missing --cov-fail-under=85
 python -m pip wheel --no-deps --wheel-dir dist .
+python scripts/verify_wheel.py dist/*.whl
 git diff --check
 ```
+
+Build distribution artifacts in a clean checkout of the intended revision.
+The wheel verifier compares package paths and contents with tracked source,
+allowing Windows newline conversion for Python files. It detects stale build
+files, missing modules, duplicate archive entries, and modified package bytes.
 
 Keep changes focused on one coherent behavior. Add or update behavioral tests
 for observable changes, document public contracts, and preserve deterministic
