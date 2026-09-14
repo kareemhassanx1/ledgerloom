@@ -23,7 +23,7 @@ git diff --check
 
 Build distribution artifacts in a clean checkout of the intended revision.
 The wheel verifier compares package paths and contents with tracked source,
-allowing Windows newline conversion for Python files. It detects stale build
+allowing Windows newline conversion for Python files and typing markers. It detects stale build
 files, missing modules, duplicate archive entries, and modified package bytes.
 
 Keep changes focused on one coherent behavior. Add or update behavioral tests

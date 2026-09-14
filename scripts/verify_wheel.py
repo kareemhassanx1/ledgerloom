@@ -39,8 +39,8 @@ def verify_wheel(wheel: Path, repository: Path) -> list[str]:
     )
     for name in sorted(expected.keys() & actual.keys()):
         source, packaged = expected[name], actual[name]
-        # Git's Windows checkout conversion is harmless for Python source text.
-        if name.endswith(".py"):
+        # Git's checkout conversion is harmless for Python and typing-marker text.
+        if name.endswith((".py", "/py.typed")):
             source = source.replace(b"\r\n", b"\n")
             packaged = packaged.replace(b"\r\n", b"\n")
         if source != packaged:
