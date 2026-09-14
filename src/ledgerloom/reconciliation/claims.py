@@ -91,6 +91,15 @@ class ReconciliationClaims:
                 )
             for decision_index, decision in enumerate(report.decisions):
                 if decision.status is not DecisionStatus.MATCHED:
+                    if decision.anchor_id in owners:
+                        raise ReconciliationClaimError(
+                            code="claim.history_anchor_already_settled",
+                            path=f"$.reports[{index}].decisions[{decision_index}].anchor_id",
+                            message=(
+                                f"settled entry {decision.anchor_id} cannot receive "
+                                "a later nonmatched decision"
+                            ),
+                        )
                     continue
                 candidate_id = decision.selected_candidate_id
                 assert candidate_id is not None
