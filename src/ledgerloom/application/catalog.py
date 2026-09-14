@@ -6,7 +6,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 
 from ledgerloom.application.errors import CatalogError
-from ledgerloom.domain import BatchId, EntryId, LedgerBatch
+from ledgerloom.domain import BatchId, EntryId, LedgerBatch, SourceId, SourceRecordId
 from ledgerloom.journal import JournalEntry, verify_journal_entries
 from ledgerloom.reconciliation import (
     RECONCILIATION_REPORT_V1,
@@ -66,10 +66,36 @@ class JournalCatalog:
                 "$.entries",
                 "journal batch identifiers must be unique across stored objects",
             )
+        self._require_unique_imports()
         try:
             ReconciliationClaims.from_reports(self.reports)
         except ReconciliationClaimError as error:
             raise CatalogError("catalog.claim_history", error.path, error.message) from error
+
+    def _require_unique_imports(self) -> None:
+        entry_ids: set[EntryId] = set()
+        source_keys: set[tuple[SourceId, SourceRecordId]] = set()
+        for batch_index, batch in enumerate(self.batches):
+            for result_index, result in enumerate(batch.results):
+                entry = result.value
+                if entry is None:
+                    continue
+                path = f"$.batches[{batch_index}].results[{result_index}]"
+                if entry.entry_id in entry_ids:
+                    raise CatalogError(
+                        "catalog.entry_duplicate",
+                        f"{path}.entry_id",
+                        f"entry identifier {entry.entry_id} was already imported",
+                    )
+                if entry.source_key in source_keys:
+                    raise CatalogError(
+                        "catalog.source_record_duplicate",
+                        f"{path}.source_record_id",
+                        f"source record {entry.source_record_id} was already imported "
+                        f"from {entry.source_id}",
+                    )
+                entry_ids.add(entry.entry_id)
+                source_keys.add(entry.source_key)
 
     @classmethod
     def from_entries(cls, entries: Iterable[JournalEntry]) -> JournalCatalog:
