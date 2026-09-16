@@ -97,7 +97,7 @@ jobs:
             --mount "type=bind,source=$PWD,target=/checkout,readonly" \
             --tmpfs /work:exec \
             ledgerloom-deps:ci sh -ec '
-              cp -a /checkout/. /work/
+              cp -R /checkout/. /work/
               cd /work
               python -m pip install --no-index --no-deps --no-build-isolation .
               python -m pip check
