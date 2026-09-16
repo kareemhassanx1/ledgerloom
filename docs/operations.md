@@ -53,8 +53,9 @@ code 4 means storage or integrity verification failed; the JSON error or
 
 SQLite journals use WAL mode. Do not copy only the main database file while a
 writer may be active: committed state can still reside in `-wal`, and copying
-files at different instants can create an inconsistent backup. Use SQLite's
-online backup facility, or stop writers and copy the database and any sidecars
+files at different instants can create an inconsistent backup. Use
+`ledgerloom backup --database ledgerloom.db --output archive/ledgerloom.db`,
+which uses SQLite's online backup, or stop writers and copy the database and any sidecars
 as one coordinated operation. Then run read-only `inspect` on the backup with
 the independently retained anchors.
 

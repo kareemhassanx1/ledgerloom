@@ -22,6 +22,9 @@ as immutable domain data.
 - SQLite journal persistence with explicit create, writable-open, and read-only modes.
 - A command-line interface for repeatable import, reconciliation, inspection, and export runs.
 - Reports that distinguish matched, unmatched, ambiguous, and invalid records.
+- Financial audit views for source totals, period balances, open items, settlement
+  variances, ingestion coverage and report revisions.
+- Online SQLite backups with checked recovery anchors and exclusive publication.
 
 ## Quick start
 
@@ -34,6 +37,8 @@ ledgerloom import processor.jsonl --database ledgerloom.db --source processor --
 ledgerloom reconcile --database ledgerloom.db --anchor-batch bank-2026-09 --batch reconciliation-2026-09
 ledgerloom inspect --database ledgerloom.db
 ledgerloom export --database ledgerloom.db --output audit.jsonl
+ledgerloom audit --database ledgerloom.db --as-of 2026-09-16T00:00:00Z
+ledgerloom backup --database ledgerloom.db --output backup.db
 ```
 
 Every command emits one canonical JSON result. Inspection and export open an
@@ -41,6 +46,8 @@ existing journal read-only, so they neither create a missing database nor repair
 one that fails verification. See [Command-line workflows](docs/cli.md) for the
 complete behavior and [Operations and recovery](docs/operations.md) before
 automating backups or recovery checks.
+See [Financial audit and verified backup](docs/financial-audit.md) for the new
+views, independent statement controls, API contracts and limitations.
 
 ## Development setup
 

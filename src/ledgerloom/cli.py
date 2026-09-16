@@ -13,13 +13,17 @@ from enum import IntEnum
 from pathlib import Path
 from typing import Never
 
+from ledgerloom.analysis.control_totals import StatementControl
 from ledgerloom.application import (
     CatalogError,
     JournalCatalog,
     export_journal_jsonl,
 )
+from ledgerloom.application.audit_pack import build_audit_pack
 from ledgerloom.domain import (
+    AccountId,
     BatchId,
+    Currency,
     Diagnostic,
     DiagnosticSeverity,
     DomainValidationError,
@@ -27,6 +31,8 @@ from ledgerloom.domain import (
     LedgerBatch,
     LedgerEntry,
     SourceId,
+    TimeRange,
+    UtcTimestamp,
     ValidationResult,
 )
 from ledgerloom.domain.errors import LedgerLoomError
@@ -68,6 +74,7 @@ from ledgerloom.serialization import (
 )
 from ledgerloom.serialization.fingerprints import ContentFingerprint
 from ledgerloom.storage import SQLiteJournal, SQLiteJournalMode, StorageError
+from ledgerloom.storage.backup import backup_journal
 
 
 class ExitCode(IntEnum):
@@ -163,6 +170,34 @@ def _build_parser() -> argparse.ArgumentParser:
     export_parser.add_argument("--output", type=Path, required=True)
     export_parser.add_argument("--force", action="store_true")
     export_parser.set_defaults(handler=_run_export)
+
+    audit_parser = commands.add_parser(
+        "audit", help="review source balances and settlement evidence"
+    )
+    audit_parser.add_argument("--database", type=Path, required=True)
+    audit_parser.add_argument(
+        "--as-of", required=True, help="explicit timestamp used for source aging"
+    )
+    audit_parser.add_argument("--period-start")
+    audit_parser.add_argument("--period-end")
+    audit_parser.add_argument(
+        "--control",
+        nargs=6,
+        action="append",
+        default=[],
+        metavar=("SOURCE", "ACCOUNT", "CURRENCY", "COUNT", "INFLOW", "OUTFLOW"),
+    )
+    audit_parser.add_argument("--compare-reports", nargs=2, metavar=("BEFORE", "AFTER"))
+    audit_parser.add_argument("--expected-count", type=int)
+    audit_parser.add_argument("--expected-head")
+    audit_parser.set_defaults(handler=_run_audit)
+
+    backup_parser = commands.add_parser("backup", help="create a verified online SQLite backup")
+    backup_parser.add_argument("--database", type=Path, required=True)
+    backup_parser.add_argument("--output", type=Path, required=True)
+    backup_parser.add_argument("--expected-count", type=int)
+    backup_parser.add_argument("--expected-head")
+    backup_parser.set_defaults(handler=_run_backup)
     return parser
 
 
@@ -489,10 +524,70 @@ def _run_export(arguments: argparse.Namespace) -> tuple[dict[str, object], ExitC
     }, ExitCode.SUCCESS
 
 
+def _run_audit(arguments: argparse.Namespace) -> tuple[dict[str, object], ExitCode]:
+    if bool(arguments.period_start) != bool(arguments.period_end):
+        raise _CliError("cli.period", "$.period", "both period boundaries are required")
+    period = (
+        None
+        if arguments.period_start is None
+        else TimeRange(
+            UtcTimestamp.parse(arguments.period_start), UtcTimestamp.parse(arguments.period_end)
+        )
+    )
+    controls = []
+    for source, account, currency, count, inflow, outflow in arguments.control:
+        try:
+            controls.append(
+                StatementControl(
+                    SourceId(source),
+                    AccountId(account),
+                    Currency(currency),
+                    int(count),
+                    Decimal(inflow),
+                    Decimal(outflow),
+                )
+            )
+        except (ValueError, InvalidOperation) as error:
+            raise _CliError("cli.control", "$.control", "invalid numeric control value") from error
+    with SQLiteJournal(arguments.database, mode=SQLiteJournalMode.READ_ONLY) as journal:
+        entries = journal.inspect_snapshot(
+            expected_count=arguments.expected_count,
+            expected_head=None
+            if arguments.expected_head is None
+            else ContentFingerprint.parse(arguments.expected_head),
+        ).require_valid()
+    comparisons = (
+        None
+        if arguments.compare_reports is None
+        else (BatchId(arguments.compare_reports[0]), BatchId(arguments.compare_reports[1]))
+    )
+    result = build_audit_pack(
+        entries,
+        as_of=UtcTimestamp.parse(arguments.as_of),
+        period=period,
+        controls=controls if arguments.control else None,
+        compare_reports=comparisons,
+    )
+    return result, ExitCode.SUCCESS
+
+
+def _run_backup(arguments: argparse.Namespace) -> tuple[dict[str, object], ExitCode]:
+    result = backup_journal(
+        arguments.database,
+        arguments.output,
+        expected_count=arguments.expected_count,
+        expected_head=None
+        if arguments.expected_head is None
+        else ContentFingerprint.parse(arguments.expected_head),
+    )
+    return result, ExitCode.SUCCESS
+
+
 def _command_name(arguments: Sequence[str]) -> str:
     return (
         arguments[0]
-        if arguments and arguments[0] in {"import", "reconcile", "inspect", "export"}
+        if arguments
+        and arguments[0] in {"import", "reconcile", "inspect", "export", "audit", "backup"}
         else "ledgerloom"
     )
 
