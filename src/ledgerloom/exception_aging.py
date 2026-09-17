@@ -8,6 +8,8 @@ from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from enum import StrEnum
 
+from ledgerloom.analysis.balances import amount_text, amount_units
+
 
 class AgingBucket(StrEnum):
     CURRENT = "current"
@@ -28,6 +30,7 @@ class LedgerException:
     disputed: bool = False
 
     def __post_init__(self) -> None:
+        amount_units(self.amount)
         if not self.exception_id.strip() or not self.account.strip():
             raise ValueError("exception identity must not be blank")
         if self.opened_at.tzinfo is None:
@@ -44,6 +47,7 @@ class AgingPolicy:
     material_amount: Decimal = Decimal("10000")
 
     def __post_init__(self) -> None:
+        amount_units(self.material_amount)
         if not timedelta(0) < self.watch_after < self.overdue_after < self.critical_after:
             raise ValueError("aging windows must be positive and increasing")
         if self.material_amount < 0:
@@ -100,7 +104,7 @@ def age_exception(
     if exception.due_on is not None and exception.due_on < clock.date():
         score += 20
         reasons.append("due-date-passed")
-    if abs(exception.amount) >= policy.material_amount:
+    if exception.amount.copy_abs() >= policy.material_amount:
         score += 20
         reasons.append("material-amount")
     if exception.owner is None:
@@ -130,7 +134,9 @@ def build_aging_report(
     return AgingReport(
         generated_at=clock,
         exceptions=tuple(aged),
-        total_absolute_amount=sum((abs(item.exception.amount) for item in aged), Decimal("0")),
+        total_absolute_amount=Decimal(
+            amount_text(sum(abs(amount_units(item.exception.amount)) for item in aged))
+        ),
         unassigned_count=sum(item.exception.owner is None for item in aged),
         overdue_count=sum(
             item.bucket in {AgingBucket.OVERDUE, AgingBucket.CRITICAL} for item in aged
@@ -139,11 +145,11 @@ def build_aging_report(
 
 
 def amount_by_currency(report: AgingReport) -> dict[str, Decimal]:
-    totals: dict[str, Decimal] = {}
+    totals: dict[str, int] = {}
     for item in report.exceptions:
         currency = item.exception.currency.upper()
-        totals[currency] = totals.get(currency, Decimal("0")) + item.exception.amount
-    return dict(sorted(totals.items()))
+        totals[currency] = totals.get(currency, 0) + amount_units(item.exception.amount)
+    return {currency: Decimal(amount_text(units)) for currency, units in sorted(totals.items())}
 
 
 def oldest_exception(report: AgingReport) -> AgedException | None:
