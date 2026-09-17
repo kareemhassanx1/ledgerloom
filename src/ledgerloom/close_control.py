@@ -101,6 +101,8 @@ def assess_control(
     if execution.control_id != control.control_id:
         raise ValueError("execution belongs to another control")
     reasons: list[str] = []
+    if execution.executed_at.astimezone(UTC) > clock.astimezone(UTC):
+        reasons.append("execution-in-future")
     if clock.astimezone(UTC) - execution.executed_at.astimezone(UTC) > policy.maximum_execution_age:
         reasons.append("execution-stale")
     missing_evidence = sorted(set(control.required_evidence) - set(execution.evidence))
