@@ -1,10 +1,26 @@
 from dataclasses import FrozenInstanceError
-from decimal import Decimal, getcontext
+from decimal import Decimal, getcontext, localcontext
 
 import pytest
 
 from ledgerloom.domain.errors import CurrencyMismatchError, DomainValidationError
 from ledgerloom.domain.money import Currency, Money
+
+
+@pytest.mark.parametrize("precision", [3, 28])
+@pytest.mark.parametrize("amount", ["12345678901234567890.123456789012345678", "-1234.56789"])
+def test_unary_operations_preserve_every_digit_at_caller_precision(precision, amount):
+    value = Money.parse(amount, "USD")
+    with localcontext() as context:
+        context.prec = precision
+        context.clear_flags()
+        negative = -value
+        absolute = abs(value)
+        assert context.prec == precision
+        assert not any(context.flags.values())
+    assert negative.amount == value.amount.copy_negate()
+    assert absolute.amount == value.amount.copy_abs()
+    assert negative.currency == absolute.currency == value.currency
 
 
 @pytest.mark.parametrize("code", ["USD", "EUR", "EGP", "JPY", "XTS"])

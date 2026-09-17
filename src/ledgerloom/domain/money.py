@@ -180,10 +180,10 @@ class Money:
             return Money(self.amount - other.amount, self.currency)
 
     def __neg__(self) -> Money:
-        return Money(-self.amount, self.currency)
+        return Money(self.amount.copy_negate(), self.currency)
 
     def __abs__(self) -> Money:
-        return Money(abs(self.amount), self.currency)
+        return Money(self.amount.copy_abs(), self.currency)
 
     def scale(self, factor: Decimal) -> Money:
         """Multiply by an exact decimal factor under a private precision context."""
