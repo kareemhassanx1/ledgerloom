@@ -94,7 +94,11 @@ def assess_approvals(
     *,
     user_roles: Mapping[str, frozenset[str]] | None = None,
 ) -> ApprovalAssessment:
-    """Check role coverage, independence, identity, and approval timing."""
+    """Check role coverage, independence, identity, and approval timing.
+
+    A supplied roster is authoritative, including an empty roster. Omitting it
+    preserves the API for callers that have already validated role membership.
+    """
 
     rule = select_rule(request, rules)
     if rule is None:
@@ -103,14 +107,15 @@ def assess_approvals(
     rejected: list[Approval] = []
     reasons: list[str] = []
     seen_approvers: set[str] = set()
-    roles = user_roles or {}
+    roles = user_roles if user_roles is not None else {}
     for approval in sorted(approvals, key=lambda item: (item.approved_at, item.approver)):
         valid = True
         invalid_identity = approval.approver in seen_approvers
         invalid_timing = approval.approved_at < request.requested_at
         invalid_role = approval.role not in rule.required_roles
         unauthorized_role = bool(
-            roles and approval.role not in roles.get(approval.approver, frozenset())
+            user_roles is not None
+            and approval.role not in roles.get(approval.approver, frozenset())
         )
         requester_conflict = (
             rule.require_independent_requester and approval.approver == request.requested_by
