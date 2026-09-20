@@ -20,6 +20,8 @@ from ledgerloom.application import (
     export_journal_jsonl,
 )
 from ledgerloom.application.audit_pack import build_audit_pack
+from ledgerloom.assurance.evidence import build_close_evidence
+from ledgerloom.assurance.planning import CapacityWindow
 from ledgerloom.domain import (
     AccountId,
     BatchId,
@@ -190,6 +192,15 @@ def _build_parser() -> argparse.ArgumentParser:
     audit_parser.add_argument("--compare-reports", nargs=2, metavar=("BEFORE", "AFTER"))
     audit_parser.add_argument("--expected-count", type=int)
     audit_parser.add_argument("--expected-head")
+    audit_parser.add_argument(
+        "--close-evidence",
+        action="store_true",
+        help="include journal-bound close assessment and review plan",
+    )
+    audit_parser.add_argument("--review-due-at")
+    audit_parser.add_argument("--review-capacity", type=_positive_record_limit)
+    audit_parser.add_argument("--review-currency", action="append", default=[])
+    audit_parser.add_argument("--evidence-actor")
     audit_parser.set_defaults(handler=_run_audit)
 
     backup_parser = commands.add_parser("backup", help="create a verified online SQLite backup")
@@ -525,6 +536,31 @@ def _run_export(arguments: argparse.Namespace) -> tuple[dict[str, object], ExitC
 
 
 def _run_audit(arguments: argparse.Namespace) -> tuple[dict[str, object], ExitCode]:
+    assurance_options = (
+        arguments.review_due_at,
+        arguments.review_capacity,
+        arguments.review_currency,
+        arguments.evidence_actor,
+    )
+    if arguments.close_evidence:
+        if not arguments.review_due_at or not arguments.evidence_actor:
+            raise _CliError(
+                "cli.close_evidence",
+                "$.close_evidence",
+                "close evidence requires review-due-at and evidence-actor",
+            )
+        if bool(arguments.review_capacity) != bool(arguments.review_currency):
+            raise _CliError(
+                "cli.review_capacity",
+                "$.review_capacity",
+                "review capacity and supported currencies must be supplied together",
+            )
+    elif any(assurance_options):
+        raise _CliError(
+            "cli.close_evidence",
+            "$.close_evidence",
+            "review and actor options require close-evidence",
+        )
     if bool(arguments.period_start) != bool(arguments.period_end):
         raise _CliError("cli.period", "$.period", "both period boundaries are required")
     period = (
@@ -568,6 +604,37 @@ def _run_audit(arguments: argparse.Namespace) -> tuple[dict[str, object], ExitCo
         controls=controls if arguments.control else None,
         compare_reports=comparisons,
     )
+    if arguments.close_evidence:
+        as_of = UtcTimestamp.parse(arguments.as_of)
+        due_at = UtcTimestamp.parse(arguments.review_due_at)
+        try:
+            windows = (
+                ()
+                if arguments.review_capacity is None
+                else (
+                    CapacityWindow(
+                        "declared-review-desk",
+                        as_of.value,
+                        due_at.value,
+                        arguments.review_capacity,
+                        frozenset(
+                            "currency:" + str(Currency(value))
+                            for value in arguments.review_currency
+                        ),
+                    ),
+                )
+            )
+            evidence = build_close_evidence(
+                entries,
+                as_of=as_of,
+                due_at=due_at,
+                controls=controls or None,
+                windows=windows,
+                actor=arguments.evidence_actor,
+            )
+            return {"audit": result, "close_evidence": evidence}, ExitCode.SUCCESS
+        except ValueError as error:
+            raise _CliError("cli.close_evidence", "$.close_evidence", str(error)) from error
     return result, ExitCode.SUCCESS
 
 

@@ -131,6 +131,21 @@ class CapacityPlannerTests(unittest.TestCase):
         with self.assertRaises(KeyError):
             plan.utilization("missing")
 
+    def test_active_window_never_allocates_before_generation(self) -> None:
+        plan = ReviewDeskCapacityPlanner(self.windows).plan(
+            (Demand("review", self.now, self.now + timedelta(hours=3), 1, 1),),
+            generated_at=self.now + timedelta(hours=1),
+        )
+        self.assertEqual(plan.allocations[0].starts_at, self.now + timedelta(hours=1))
+
+    def test_expired_demand_cannot_use_an_ongoing_window(self) -> None:
+        plan = ReviewDeskCapacityPlanner(self.windows).plan(
+            (Demand("expired", self.now, self.now + timedelta(minutes=30), 1, 1),),
+            generated_at=self.now + timedelta(hours=1),
+        )
+        self.assertEqual(plan.allocations, ())
+        self.assertEqual(plan.unscheduled[0].reason, UnscheduledReason.OUTSIDE_HORIZON)
+
 
 if __name__ == "__main__":
     unittest.main()

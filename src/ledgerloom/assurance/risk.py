@@ -10,6 +10,14 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import cast
+
+from ledgerloom.analysis.balances import amount_text, amount_units
+from ledgerloom.analysis.control_totals import StatementControl
+from ledgerloom.application.audit_pack import build_audit_pack
+from ledgerloom.application.catalog import JournalCatalog
+from ledgerloom.domain import UtcTimestamp
+from ledgerloom.journal import JournalEntry
 
 
 class Direction(StrEnum):
@@ -241,3 +249,134 @@ def prioritize_reviews(assessments: Iterable[Assessment]) -> tuple[Assessment, .
             ),
         )
     )
+
+
+def assess_journal_close(
+    entries: Iterable[JournalEntry],
+    *,
+    as_of: UtcTimestamp,
+    controls: Iterable[StatementControl] | None = None,
+) -> dict[str, object]:
+    """Assess a verified financial snapshot under the strict full-reconciliation policy.
+
+    Acceptance requires independent statement controls, no open entries, rejected
+    imports, future source dates, unsupported events or settlement discrepancies.
+    This is a reproducible technical assessment, not a human close approval.
+    Amounts are compared as exact decimal units by the financial audit views;
+    the generic engine receives counts only, never floating-point money.
+    """
+    snapshot = tuple(entries)
+    expected = None if controls is None else tuple(controls)
+    audit = build_audit_pack(snapshot, as_of=as_of, controls=expected)
+    catalog = JournalCatalog.from_entries(snapshot)
+    imported = tuple(entry for batch in catalog.batches for entry in batch.entries)
+    opened = cast(list[dict[str, object]], audit["open_items"])
+    coverage = cast(list[dict[str, object]], audit["source_coverage"])
+    discrepancies = [
+        row for row in cast(list[dict[str, object]], audit["settlements"]) if row["issues"]
+    ]
+    future = tuple(entry for entry in imported if entry.occurred_at > as_of)
+    control_result = cast(dict[str, object] | None, audit["statement_controls"])
+    failed_groups = (
+        []
+        if control_result is None
+        else [
+            row for row in cast(list[dict[str, object]], control_result["groups"]) if row["issues"]
+        ]
+    )
+    measurements = (
+        (
+            "imported-rows",
+            len(imported),
+            1,
+            Direction.MINIMUM,
+            tuple(str(batch.batch_id) for batch in catalog.batches),
+        ),
+        (
+            "open-entries",
+            len(opened),
+            0,
+            Direction.MAXIMUM,
+            tuple(str(row["entry"]) for row in opened),
+        ),
+        (
+            "rejected-import-rows",
+            sum(cast(int, row["rejected_rows"]) for row in coverage),
+            0,
+            Direction.MAXIMUM,
+            tuple(str(row["source"]) for row in coverage if row["rejected_rows"]),
+        ),
+        (
+            "future-source-entries",
+            len(future),
+            0,
+            Direction.MAXIMUM,
+            tuple(str(entry.entry_id) for entry in future),
+        ),
+        (
+            "unknown-journal-events",
+            len(catalog.unrecognized_entries),
+            0,
+            Direction.MAXIMUM,
+            tuple(str(entry.fingerprint) for entry in catalog.unrecognized_entries),
+        ),
+        (
+            "settlement-discrepancies",
+            len(discrepancies),
+            0,
+            Direction.MAXIMUM,
+            tuple(sorted({str(row["report"]) for row in discrepancies})),
+        ),
+        ("independent-controls", len(expected or ()), 1, Direction.MINIMUM, ()),
+        (
+            "statement-discrepancies",
+            len(failed_groups),
+            0,
+            Direction.MAXIMUM,
+            tuple(sorted({str(row["source"]) for row in failed_groups})),
+        ),
+    )
+    engine = JournalCloseRiskEngine(
+        tuple(
+            ControlRule(code, code, boundary, direction, Severity.BLOCKING)
+            for code, _, boundary, direction, _ in measurements
+        )
+    )
+    assessment = engine.assess(
+        str(audit["head_fingerprint"] or "empty-journal"),
+        (Signal(code, measured, refs) for code, measured, _, _, refs in measurements),
+    )
+    return {
+        "schema": "ledgerloom.journal_close_assessment.v1",
+        "policy": "strict-full-reconciliation-v1",
+        "disposition": assessment.disposition.value,
+        "is_human_approval": False,
+        "audit": audit,
+        "independent_controls": None
+        if expected is None
+        else [
+            {
+                "source": str(item.source),
+                "account": str(item.account),
+                "currency": str(item.currency),
+                "count": item.count,
+                "inflow": amount_text(amount_units(item.inflow)),
+                "outflow": amount_text(amount_units(item.outflow)),
+            }
+            for item in sorted(
+                expected, key=lambda c: (str(c.source), str(c.account), str(c.currency))
+            )
+        ],
+        "findings": [
+            {
+                "code": item.control_code,
+                "passed": item.passed,
+                "measured": item.measured,
+                "boundary": item.boundary,
+                "direction": item.direction.value,
+                "evidence_refs": list(item.evidence_refs),
+                "explanation": item.explanation,
+            }
+            for item in assessment.findings
+        ],
+    }

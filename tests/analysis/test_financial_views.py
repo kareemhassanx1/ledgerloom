@@ -1,4 +1,6 @@
+from copy import deepcopy
 from dataclasses import replace
+from datetime import timedelta
 from decimal import Decimal, localcontext
 from itertools import permutations
 
@@ -14,6 +16,9 @@ from ledgerloom.analysis.source_coverage import source_coverage
 from ledgerloom.application import JournalCatalog
 from ledgerloom.application.audit_pack import build_audit_pack
 from ledgerloom.application.errors import ApplicationError
+from ledgerloom.assurance.evidence import build_close_evidence, verify_close_evidence
+from ledgerloom.assurance.planning import CapacityWindow, plan_journal_reviews
+from ledgerloom.assurance.risk import assess_journal_close
 from ledgerloom.domain import (
     AccountId,
     BatchId,
@@ -340,3 +345,224 @@ def test_audit_pack_unknown_schema_is_explicit_and_invalid_history_fails(make_en
         )
     with pytest.raises(ApplicationError):
         build_audit_pack(values, as_of=AS_OF, compare_reports=("bad",))
+
+
+def close_inputs(make_entry, *, amount="125.5", candidate_amount=None):
+    a = make_entry("anchor", amount=amount)
+    b = make_entry("candidate", source_id="processor", amount=candidate_amount or amount)
+    entries = chain(catalog(a, b, reports=(report(a, b),)))
+    controls = (
+        control(count=1, inflow=amount, outflow="0"),
+        control(count=1, inflow=candidate_amount or amount, outflow="0", source="processor"),
+    )
+    return entries, controls
+
+
+def review_window(*, units=1, currencies=("USD",)):
+    return CapacityWindow(
+        "desk",
+        AS_OF.shift(timedelta(hours=-1)).value,
+        AS_OF.shift(timedelta(hours=2)).value,
+        units,
+        frozenset("currency:" + currency for currency in currencies),
+    )
+
+
+def close_options(controls=None, windows=()):
+    return dict(
+        as_of=AS_OF,
+        due_at=AS_OF.shift(timedelta(hours=3)),
+        controls=controls,
+        windows=windows,
+        actor="financial-reviewer",
+    )
+
+
+def failed_codes(result):
+    return {row["code"] for row in result["findings"] if not row["passed"]}
+
+
+def test_financial_close_requires_real_settlements_and_independent_controls(make_entry):
+    entries, controls = close_inputs(make_entry)
+    accepted = assess_journal_close(iter(entries), as_of=AS_OF, controls=iter(controls))
+    assert accepted["disposition"] == "accept" and not accepted["is_human_approval"]
+    assert accepted["audit"]["open_items"] == []
+    assert accepted["audit"]["head_fingerprint"] == str(entries[-1].fingerprint)
+    for missing in (None, ()):
+        result = assess_journal_close(entries, as_of=AS_OF, controls=missing)
+        assert result["disposition"] == "hold"
+        assert "independent-controls" in failed_codes(result)
+    incomplete = assess_journal_close(entries[:-1], as_of=AS_OF, controls=controls)
+    assert failed_codes(incomplete) == {"open-entries"}
+    assert incomplete["audit"]["open_items"][0]["status"] == "unreviewed"
+
+
+def test_close_amount_checks_are_exact_under_low_decimal_precision(make_entry):
+    exact = "99999999999999999999.000000000000000001"
+    entries, controls = close_inputs(make_entry, amount=exact)
+    with localcontext() as context:
+        context.prec = 2
+        good = assess_journal_close(entries, as_of=AS_OF, controls=controls)
+        wrong = assess_journal_close(
+            entries,
+            as_of=AS_OF,
+            controls=(replace(controls[0], inflow=Decimal("99999999999999999999")), controls[1]),
+        )
+    assert good["disposition"] == "accept"
+    assert good["independent_controls"][0]["inflow"] == exact
+    assert failed_codes(wrong) == {"statement-discrepancies"}
+
+
+def test_close_detects_real_settlement_variance_and_preserves_report_identity(make_entry):
+    entries, controls = close_inputs(make_entry, candidate_amount="125.49")
+    result = assess_journal_close(entries, as_of=AS_OF, controls=controls)
+    assert failed_codes(result) == {"settlement-discrepancies"}
+    variance = result["audit"]["settlements"][0]
+    assert variance["variance"] == "0.01" and variance["report"] == "report"
+
+
+def test_close_empty_unknown_rejected_and_future_data_cannot_pass(make_entry):
+    assert "imported-rows" in failed_codes(assess_journal_close((), as_of=AS_OF))
+    future = make_entry("future", occurred_at="2026-09-20T00:00:00Z")
+    rejected = LedgerBatch(
+        BatchId("rejected"),
+        SourceId("failed"),
+        (ValidationResult.failure(Diagnostic("import.bad_amount", "amount", "bad amount")),),
+    )
+    view = catalog(future)
+    entries = chain(JournalCatalog((*view.batches, rejected), ()))
+    unknown = JournalEntry.create(
+        len(entries) + 1,
+        SchemaDocument.build(SchemaRef.parse("vendor.note", "1.0"), {"ok": True}),
+        entries[-1].fingerprint,
+    )
+    result = assess_journal_close((*entries, unknown), as_of=AS_OF)
+    assert {
+        "future-source-entries",
+        "unknown-journal-events",
+        "rejected-import-rows",
+    } <= failed_codes(result)
+    with pytest.raises(JournalIntegrityError):
+        assess_journal_close((unknown,), as_of=AS_OF)
+
+
+def test_review_plan_excludes_both_settled_participants_and_keeps_last_decision(make_entry):
+    a, b = make_entry("a"), make_entry("b", source_id="processor")
+    c, d = make_entry("c"), make_entry("d", currency="EUR")
+    entries = chain(catalog(a, b, c, d, reports=(report(a, b), report(c, name="last-review"))))
+    plan = plan_journal_reviews(
+        iter(entries),
+        as_of=AS_OF,
+        due_at=AS_OF.shift(timedelta(hours=3)),
+        windows=iter((review_window(),)),
+    )
+    assert [item["entry"] for item in plan["items"]] == ["c", "d"]
+    assert plan["items"][0]["last_report"] == "last-review"
+    assert plan["items"][0]["reason"] == "decision.no_candidates"
+    assert plan["allocations"][0]["entry"] == "c"
+    assert plan["allocations"][0]["starts_at"] == AS_OF.canonical()
+    assert plan["unscheduled"] == [{"entry": "d", "units": 1, "reason": "no-compatible-window"}]
+
+
+def test_review_plan_prioritizes_decisions_without_splitting_or_overbooking(make_entry):
+    a, b, c = (make_entry(name) for name in ("a", "b", "c"))
+    entries = chain(catalog(a, b, c, reports=(report(c),)))
+    plan = plan_journal_reviews(
+        entries, as_of=AS_OF, due_at=AS_OF.shift(timedelta(hours=3)), windows=(review_window(),)
+    )
+    assert [row["entry"] for row in plan["allocations"]] == ["c"]
+    assert len(plan["unscheduled"]) == 2
+    assert all(
+        row["units"] == 1 and row["reason"] == "capacity-exhausted" for row in plan["unscheduled"]
+    )
+    assert plan["items"][2]["status"] == "unmatched"
+
+
+def test_review_future_entries_and_empty_capacity_are_explicit(make_entry):
+    entries = chain(
+        catalog(make_entry("now"), make_entry("future", occurred_at="2026-09-17T00:00:00Z"))
+    )
+    plan = plan_journal_reviews(
+        entries, as_of=AS_OF, due_at=AS_OF.shift(timedelta(hours=3)), windows=()
+    )
+    assert plan["allocations"] == []
+    assert [row["reason"] for row in plan["unscheduled"]] == [
+        "source-at-or-after-deadline",
+        "no-compatible-window",
+    ]
+    with pytest.raises(ValueError, match="deadline"):
+        plan_journal_reviews(entries, as_of=AS_OF, due_at=AS_OF, windows=())
+
+
+@pytest.mark.parametrize("units", [True, 1.5])
+def test_financial_review_requires_integer_capacity(make_entry, units):
+    with pytest.raises(ValueError, match="integer"):
+        plan_journal_reviews(
+            chain(catalog(make_entry())),
+            as_of=AS_OF,
+            due_at=AS_OF.shift(timedelta(hours=3)),
+            windows=(review_window(units=units),),
+        )
+
+
+def test_close_evidence_is_deterministic_and_independently_reproducible(make_entry):
+    entries, controls = close_inputs(make_entry)
+    options = close_options(controls, (review_window(),))
+    first = build_close_evidence(iter(entries), **options)
+    assert verify_close_evidence(first, iter(entries), **options)
+    assert first == build_close_evidence(entries, **{**options, "controls": reversed(controls)})
+    assert first["review_plan"]["items"] == []
+    assert all(record["subject_id"] == str(entries[-1].fingerprint) for record in first["records"])
+    assert not first["is_human_approval"]
+
+
+@pytest.mark.parametrize(
+    "changed", ["head", "count", "decision", "control", "capacity", "actor", "digest", "extra"]
+)
+def test_financial_evidence_rejects_altered_or_foreign_evidence(make_entry, changed):
+    entries, controls = close_inputs(make_entry)
+    options = close_options(controls, (review_window(),))
+    evidence = build_close_evidence(entries, **options)
+    altered = deepcopy(evidence)
+    if changed == "head":
+        altered["assessment"]["audit"]["head_fingerprint"] = "foreign"
+    elif changed == "count":
+        altered["assessment"]["audit"]["entry_count"] = 0
+    elif changed == "decision":
+        altered["assessment"]["audit"]["settlements"][0]["report"] = "invented"
+    elif changed == "control":
+        altered["assessment"]["independent_controls"][0]["count"] = 999
+    elif changed == "capacity":
+        altered["review_plan"]["windows"][0]["units"] = 999
+    elif changed == "actor":
+        altered["records"][0]["actor"] = "other"
+    elif changed == "digest":
+        altered["terminal_digest"] = "0" * 64
+    else:
+        altered["approved"] = True
+    assert not verify_close_evidence(altered, entries, **options)
+    assert not verify_close_evidence(evidence, entries[:-1], **options)
+
+
+def test_rehashed_foreign_chain_is_not_financial_evidence(make_entry):
+    from ledgerloom.assurance.evidence import CloseApprovalEvidenceChain, EvidenceDraft
+    from ledgerloom.serialization import canonical_json_text
+
+    entries, controls = close_inputs(make_entry)
+    options = close_options(controls)
+    forged = build_close_evidence(entries, **options)
+    forged["assessment"]["audit"]["settlements"][0]["candidate"] = "fabricated"
+    chain = CloseApprovalEvidenceChain(str(entries[-1].fingerprint))
+    for row in forged["records"]:
+        attributes = row["attributes"]
+        if row["kind"] == "financial-close-assessment":
+            attributes = {"canonical_evidence": canonical_json_text(forged["assessment"])}
+        sealed = chain.append(
+            EvidenceDraft(row["evidence_id"], row["kind"], AS_OF.value, row["actor"], attributes)
+        )
+        row.update(
+            attributes=attributes, previous_digest=sealed.previous_digest, digest=sealed.digest
+        )
+    forged["terminal_digest"] = chain.terminal_digest
+    assert chain.verify().valid
+    assert not verify_close_evidence(forged, entries, **options)

@@ -9,6 +9,13 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
 
+from ledgerloom.analysis.control_totals import StatementControl
+from ledgerloom.assurance.planning import CapacityWindow, plan_journal_reviews
+from ledgerloom.assurance.risk import assess_journal_close
+from ledgerloom.domain import UtcTimestamp
+from ledgerloom.journal import JournalEntry
+from ledgerloom.serialization import canonical_json_text
+
 GENESIS_DIGEST = "0" * 64
 
 
@@ -231,3 +238,77 @@ def evidence_projection(records: Iterable[EvidenceRecord]) -> tuple[dict[str, st
         }
         for record in records
     )
+
+
+def build_close_evidence(
+    entries: Iterable[JournalEntry],
+    *,
+    as_of: UtcTimestamp,
+    due_at: UtcTimestamp,
+    controls: Iterable[StatementControl] | None,
+    windows: Iterable[CapacityWindow],
+    actor: str,
+) -> dict[str, object]:
+    """Seal measured financial evidence and the actual outstanding review queue.
+
+    The journal head binds every imported row and canonical decision report.
+    Independent controls and capacity inputs are retained, not just their pass
+    labels. No record here represents a human review or approval.
+    """
+    snapshot = tuple(entries)
+    assessment = assess_journal_close(snapshot, as_of=as_of, controls=controls)
+    plan = plan_journal_reviews(snapshot, as_of=as_of, due_at=due_at, windows=windows)
+    subject = str(snapshot[-1].fingerprint) if snapshot else "empty-journal"
+    chain = CloseApprovalEvidenceChain(subject)
+    for kind, payload in (
+        ("journal-snapshot", {"head": subject, "entry_count": len(snapshot)}),
+        ("financial-close-assessment", assessment),
+        ("outstanding-review-plan", plan),
+    ):
+        chain.append(
+            EvidenceDraft(
+                kind, kind, as_of.value, actor, {"canonical_evidence": canonical_json_text(payload)}
+            )
+        )
+    return {
+        "schema": "ledgerloom.financial_close_evidence.v1",
+        "is_human_approval": False,
+        "assessment": assessment,
+        "review_plan": plan,
+        "records": [
+            {
+                "evidence_id": record.evidence_id,
+                "subject_id": record.subject_id,
+                "kind": record.kind,
+                "occurred_at": _timestamp(record.occurred_at),
+                "actor": record.actor,
+                "attributes": dict(record.attributes),
+                "previous_digest": record.previous_digest,
+                "digest": record.digest,
+            }
+            for record in chain.records
+        ],
+        "terminal_digest": chain.terminal_digest,
+    }
+
+
+def verify_close_evidence(
+    evidence: Mapping[str, object],
+    entries: Iterable[JournalEntry],
+    *,
+    as_of: UtcTimestamp,
+    due_at: UtcTimestamp,
+    controls: Iterable[StatementControl] | None,
+    windows: Iterable[CapacityWindow],
+    actor: str,
+) -> bool:
+    """Recompute against trusted journal and policy inputs, not self-reported hashes.
+
+    Returns false for altered evidence, including an internally rehashed chain.
+    Invalid trusted inputs raise normally, just as when building the evidence.
+    The digest is an integrity receipt; it is not an actor authentication signature.
+    """
+    expected = build_close_evidence(
+        entries, as_of=as_of, due_at=due_at, controls=controls, windows=windows, actor=actor
+    )
+    return canonical_json_text(dict(evidence)) == canonical_json_text(expected)

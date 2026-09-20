@@ -11,6 +11,11 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
 
+from ledgerloom.analysis.open_items import open_items
+from ledgerloom.application.catalog import JournalCatalog
+from ledgerloom.domain import UtcTimestamp
+from ledgerloom.journal import JournalEntry
+
 
 def _utc(value: datetime) -> datetime:
     if value.tzinfo is None:
@@ -147,7 +152,7 @@ class ReviewDeskCapacityPlanner:
                         demand_id=demand.demand_id,
                         window_id=window.window_id,
                         units=assigned,
-                        starts_at=max(_utc(window.starts_at), _utc(demand.earliest_start)),
+                        starts_at=max(now, _utc(window.starts_at), _utc(demand.earliest_start)),
                         ends_at=min(_utc(window.ends_at), _utc(demand.due_at)),
                     )
                 )
@@ -183,6 +188,7 @@ class ReviewDeskCapacityPlanner:
             for window in self._windows
             if _utc(window.ends_at) > max(generated_at, _utc(demand.earliest_start))
             and _utc(window.starts_at) < _utc(demand.due_at)
+            and generated_at < _utc(demand.due_at)
             and demand.required_capabilities.issubset(window.capabilities)
         )
 
@@ -230,3 +236,99 @@ def unscheduled_by_reason(plan: CapacityPlan) -> dict[UnscheduledReason, int]:
     for item in plan.unscheduled:
         summary[item.reason] += item.units
     return summary
+
+
+def plan_journal_reviews(
+    entries: Iterable[JournalEntry],
+    *,
+    as_of: UtcTimestamp,
+    due_at: UtcTimestamp,
+    windows: Iterable[CapacityWindow],
+) -> dict[str, object]:
+    """Plan one review per actual open financial entry, retaining decision provenance.
+
+    Windows declare supported ``currency:USD``-style capabilities. Conflicted
+    and ambiguous decisions precede unmatched and unreviewed entries. Planning
+    never resolves a decision, reserves a journal entry or authorizes a close.
+    """
+    snapshot = tuple(entries)
+    catalog = JournalCatalog.from_entries(snapshot)
+    rows = open_items(catalog, as_of=as_of)
+    if due_at <= as_of:
+        raise ValueError("review deadline must follow as_of")
+    capacity = tuple(windows)
+    if any(type(window.units) is not int or window.units < 1 for window in capacity):
+        raise ValueError("financial review capacity must be a positive integer")
+    # Empty capacity is a valid, explicitly unscheduled review desk.
+    planner = None if not capacity else ReviewDeskCapacityPlanner(capacity)
+    priority = {"conflict": 4, "ambiguous": 3, "unmatched": 2, "unreviewed": 1}
+    demands = []
+    deferred: list[dict[str, object]] = []
+    items = []
+    for row in rows:
+        earliest = max(as_of, UtcTimestamp.parse(str(row["occurred_at"])))
+        rank = priority.get(str(row["status"]), 1)
+        capability = "currency:" + str(row["currency"])
+        items.append({**row, "priority": rank, "required_capabilities": [capability]})
+        if earliest >= due_at:
+            deferred.append(
+                {"entry": row["entry"], "units": 1, "reason": "source-at-or-after-deadline"}
+            )
+        elif planner is None:
+            deferred.append({"entry": row["entry"], "units": 1, "reason": "no-compatible-window"})
+        else:
+            demands.append(
+                Demand(
+                    str(row["entry"]),
+                    earliest.value,
+                    due_at.value,
+                    1,
+                    rank,
+                    frozenset({capability}),
+                )
+            )
+    plan = None if planner is None else planner.plan(demands, generated_at=as_of.value)
+    return {
+        "schema": "ledgerloom.journal_review_plan.v1",
+        "state_basis": "current_journal_snapshot; as_of_is_source_age_and_planning_time",
+        "entry_count": len(snapshot),
+        "head_fingerprint": str(snapshot[-1].fingerprint) if snapshot else None,
+        "as_of": as_of.canonical(),
+        "due_at": due_at.canonical(),
+        "priority_policy": priority,
+        "items": items,
+        "windows": [
+            {
+                "id": window.window_id,
+                "starts_at": UtcTimestamp(window.starts_at).canonical(),
+                "ends_at": UtcTimestamp(window.ends_at).canonical(),
+                "units": window.units,
+                "capabilities": sorted(window.capabilities),
+            }
+            for window in sorted(capacity, key=lambda w: (_utc(w.starts_at), w.window_id))
+        ],
+        "allocations": []
+        if plan is None
+        else [
+            {
+                "entry": item.demand_id,
+                "window": item.window_id,
+                "units": item.units,
+                "starts_at": UtcTimestamp(item.starts_at).canonical(),
+                "ends_at": UtcTimestamp(item.ends_at).canonical(),
+            }
+            for item in plan.allocations
+        ],
+        "unscheduled": sorted(
+            deferred
+            + (
+                []
+                if plan is None
+                else [
+                    {"entry": item.demand_id, "units": item.units, "reason": item.reason.value}
+                    for item in plan.unscheduled
+                ]
+            ),
+            key=lambda row: str(row["entry"]),
+        ),
+    }

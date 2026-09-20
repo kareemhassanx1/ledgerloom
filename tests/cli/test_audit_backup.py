@@ -73,6 +73,29 @@ def test_installed_workflow_import_audit_controls_and_backup(tmp_path, capsys):
     assert code == 0 and saved["result"]["head_fingerprint"] == result["head_fingerprint"]
     assert run(capsys, *args)[1] == output
 
+    code, assured = run(
+        capsys,
+        *args,
+        "--close-evidence",
+        "--review-due-at",
+        "2026-09-17T00:00:00Z",
+        "--evidence-actor",
+        "reviewer",
+        "--review-capacity",
+        "1",
+        "--review-currency",
+        "USD",
+    )
+    assert code == 0
+    assert assured["result"]["audit"] == result
+    evidence = assured["result"]["close_evidence"]
+    assert evidence["assessment"]["disposition"] == "hold"
+    assert evidence["assessment"]["audit"]["head_fingerprint"] == result["head_fingerprint"]
+    assert len(evidence["review_plan"]["allocations"]) == 1
+    # Evidence generation is read-only and does not turn planning into approval.
+    assert not evidence["is_human_approval"]
+    assert run(capsys, *args)[1] == output
+
 
 @pytest.mark.parametrize(
     "extra",
@@ -82,6 +105,25 @@ def test_installed_workflow_import_audit_controls_and_backup(tmp_path, capsys):
         ("--control", "bank", "cash", "USD", "1", "bad", "0"),
         ("--control", "bank", "cash", "USD", "1", "NaN", "0"),
         ("--compare-reports", "missing", "another"),
+        ("--close-evidence",),
+        ("--evidence-actor", "reviewer"),
+        (
+            "--close-evidence",
+            "--review-due-at",
+            "2026-09-15T00:00:00Z",
+            "--evidence-actor",
+            "reviewer",
+        ),
+        (
+            "--close-evidence",
+            "--review-due-at",
+            "2026-09-17T00:00:00Z",
+            "--evidence-actor",
+            "reviewer",
+            "--review-capacity",
+            "1",
+        ),
+        ("--close-evidence", "--review-due-at", "2026-09-17T00:00:00Z", "--evidence-actor", " "),
     ],
 )
 def test_audit_invalid_input_is_a_structured_error(tmp_path, capsys, extra):
